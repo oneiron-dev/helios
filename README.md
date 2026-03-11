@@ -3,7 +3,7 @@
 > [!CAUTION]
 > **Important:** Helios does not currently have a permissions/security model. The agent runs basically unrestricted. You are responsible for any losses of data/other adverse outcomes from running it. If you have stuff you care about, then back it up (whether or not you use Helios, backing up is a good idea!), run Helios in a container, or wait until it has a permissions system.
 
-![Helios screenshot](https://raw.githubusercontent.com/snoglobe/helios/main/media/screenshot.png)
+![Helios screenshot](https://raw.githubusercontent.com/snoglobe/helios/main/media/screnshot.png)
 
 An autonomous research agent inspired by [Andrej Karpathy's 'autoresearch'](https://github.com/karpathy/autoresearch). Autoresearch works very well within Helios, just have to tune the prompt slightly.
 
