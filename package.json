@@ -1,6 +1,6 @@
 {
   "name": "@snoglobe/helios",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Autonomous ML research agent TUI",
   "type": "module",
   "main": "dist/cli/index.js",
@@ -63,6 +63,7 @@
   "devDependencies": {
     "@types/asciichart": "^1.5.8",
     "@types/better-sqlite3": "^7.6.12",
+    "@types/marked-terminal": "^6.1.1",
     "@types/react": "^19.0.0",
     "@types/ssh2": "^1.15.0",
     "tsx": "^4.19.0",
