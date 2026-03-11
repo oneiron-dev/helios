@@ -1,4 +1,3 @@
-import React from "react";
 import { Box, Text } from "ink";
 import { C, METRIC_COLORS, nameHash } from "../theme.js";
 import { formatMetricValue } from "../format.js";

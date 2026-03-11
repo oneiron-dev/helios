@@ -1,4 +1,3 @@
-import React from "react";
 import { Box, Text } from "ink";
 import type { StickyNote } from "../../core/stickies.js";
 import { C } from "../theme.js";

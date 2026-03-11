@@ -111,6 +111,33 @@ const migrations: Migration[] = [
         ON memory_nodes(session_id, path);
     `,
   },
+  {
+    version: 3,
+    sql: `
+      ALTER TABLE metrics ADD COLUMN agent_id TEXT NOT NULL DEFAULT '';
+      CREATE INDEX IF NOT EXISTS idx_metrics_agent
+        ON metrics(agent_id, metric_name, timestamp);
+
+      ALTER TABLE sessions ADD COLUMN agent_id TEXT NOT NULL DEFAULT '';
+      CREATE INDEX IF NOT EXISTS idx_sessions_agent
+        ON sessions(agent_id, last_active_at);
+    `,
+  },
+  {
+    version: 4,
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_metrics_agent_task
+        ON metrics(agent_id, task_id, metric_name, timestamp);
+    `,
+  },
+  {
+    version: 5,
+    sql: `
+      ALTER TABLE sessions ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

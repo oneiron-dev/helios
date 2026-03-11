@@ -99,10 +99,7 @@ export class ExperimentTracker {
     const experiment = this.experiments.get(key);
     if (!experiment) return;
 
-    // Find the existing path
-    const nodes = this.memory.ls("/experiments/");
-    const node = nodes.find((n) => n.gist.startsWith(key));
-    if (!node) return;
+    const path = `/experiments/${experiment.name}`;
 
     const metricStr = metrics
       ? Object.entries(metrics)
@@ -127,7 +124,7 @@ export class ExperimentTracker {
       .filter(Boolean)
       .join("\n");
 
-    this.memory.write(node.path, gist, content);
+    this.memory.write(path, gist, content);
     this.experiments.delete(key);
   }
 

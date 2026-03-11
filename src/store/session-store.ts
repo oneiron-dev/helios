@@ -21,9 +21,18 @@ export interface SessionSummary {
   lastActiveAt: number;
   messageCount: number;
   firstUserMessage: string | null;
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
 }
 
 export class SessionStore {
+  private agentId: string;
+
+  constructor(agentId = "") {
+    this.agentId = agentId;
+  }
+
   createSession(
     provider: string,
     model?: string,
@@ -34,9 +43,9 @@ export class SessionStore {
     const db = getDb();
 
     db.prepare(
-      `INSERT INTO sessions (id, provider, provider_session_id, model, status, created_at, last_active_at)
-       VALUES (?, ?, ?, ?, 'active', ?, ?)`,
-    ).run(id, provider, providerSessionId ?? null, model ?? null, now, now);
+      `INSERT INTO sessions (id, provider, provider_session_id, model, status, created_at, last_active_at, agent_id)
+       VALUES (?, ?, ?, ?, 'active', ?, ?, ?)`,
+    ).run(id, provider, providerSessionId ?? null, model ?? null, now, now, this.agentId);
 
     return {
       id,
@@ -70,6 +79,13 @@ export class SessionStore {
       Date.now(),
       sessionId,
     );
+  }
+
+  addCost(sessionId: string, costUsd: number, inputTokens: number, outputTokens: number): void {
+    const db = getDb();
+    db.prepare(
+      `UPDATE sessions SET cost_usd = cost_usd + ?, input_tokens = input_tokens + ?, output_tokens = output_tokens + ? WHERE id = ?`,
+    ).run(costUsd, inputTokens, outputTokens, sessionId);
   }
 
   addMessage(
@@ -116,9 +132,9 @@ export class SessionStore {
     const db = getDb();
     const rows = db
       .prepare(
-        "SELECT * FROM sessions ORDER BY last_active_at DESC LIMIT ?",
+        "SELECT * FROM sessions WHERE agent_id = ? ORDER BY last_active_at DESC LIMIT ?",
       )
-      .all(limit) as Record<string, unknown>[];
+      .all(this.agentId, limit) as Record<string, unknown>[];
 
     return rows.map((row) => ({
       id: row.id as string,
@@ -139,17 +155,21 @@ export class SessionStore {
            s.model,
            s.created_at,
            s.last_active_at,
+           s.cost_usd,
+           s.input_tokens,
+           s.output_tokens,
            COUNT(m.id) AS message_count,
            (SELECT m2.content FROM messages m2
             WHERE m2.session_id = s.id AND m2.role = 'user'
             ORDER BY m2.timestamp ASC LIMIT 1) AS first_user_message
          FROM sessions s
          LEFT JOIN messages m ON m.session_id = s.id
+         WHERE s.agent_id = ?
          GROUP BY s.id
          ORDER BY s.last_active_at DESC
          LIMIT ?`,
       )
-      .all(limit) as Record<string, unknown>[];
+      .all(this.agentId, limit) as Record<string, unknown>[];
 
     return rows.map((row) => ({
       id: row.id as string,
@@ -158,6 +178,9 @@ export class SessionStore {
       createdAt: row.created_at as number,
       lastActiveAt: row.last_active_at as number,
       messageCount: row.message_count as number,
+      costUsd: (row.cost_usd as number) ?? 0,
+      inputTokens: (row.input_tokens as number) ?? 0,
+      outputTokens: (row.output_tokens as number) ?? 0,
       firstUserMessage: row.first_user_message
         ? truncate(row.first_user_message as string, 80, true)
         : null,

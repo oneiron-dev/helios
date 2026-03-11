@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Text, useInput } from "ink";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { C, G } from "../theme.js";
 import { formatDuration, truncate, formatError } from "../format.js";
 import { OverlayHeader } from "../components/overlay-header.js";
-import type { TaskInfo } from "../layout.js";
+import type { TaskInfo } from "../types.js";
 import type { RemoteExecutor } from "../../remote/executor.js";
 
 interface TaskOverlayProps {

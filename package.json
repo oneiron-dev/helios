@@ -1,16 +1,16 @@
 {
   "name": "@snoglobe/helios",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Autonomous ML research agent TUI",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/cli/index.js",
   "bin": {
-    "helios": "dist/index.js"
+    "helios": "dist/bootstrap.js"
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/index.tsx",
-    "start": "node dist/index.js",
+    "dev": "tsx src/bootstrap.ts",
+    "start": "node dist/bootstrap.js",
     "prepublishOnly": "npm run build"
   },
   "files": [
@@ -21,11 +21,22 @@
     "type": "git",
     "url": "git+https://github.com/snoglobe/helios.git"
   },
-  "keywords": ["ml", "research", "agent", "tui", "autonomous", "claude", "openai"],
+  "keywords": [
+    "ml",
+    "research",
+    "agent",
+    "tui",
+    "autonomous",
+    "claude",
+    "openai"
+  ],
   "author": "snoglobe",
   "license": "Apache-2.0",
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.0",
+    "@effect/cli": "^0.73.2",
+    "@effect/platform": "^0.94.5",
+    "@effect/platform-node": "^0.104.1",
     "@hono/node-server": "^1.19.0",
     "@inkjs/ui": "^2.0.0",
     "@mozilla/readability": "^0.6.0",
@@ -34,6 +45,7 @@
     "asciichart": "^1.5.25",
     "better-sqlite3": "^11.8.1",
     "date-fns": "^4.1.0",
+    "effect": "^3.19.19",
     "fullscreen-ink": "^0.1.0",
     "hono": "^4.7.0",
     "ink": "^6.0.0",

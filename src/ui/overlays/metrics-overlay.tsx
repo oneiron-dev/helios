@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { ScrollView } from "ink-scroll-view";
 import asciichart from "asciichart";

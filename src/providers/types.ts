@@ -104,6 +104,7 @@ export interface ModelProvider {
     session: Session,
     message: string,
     tools: ToolDefinition[],
+    attachments?: Attachment[],
   ): AsyncGenerator<AgentEvent>;
 
   /** Interrupt the current generation */
@@ -133,6 +134,17 @@ export interface ModelInfo {
   id: string;
   name: string;
   description?: string;
+}
+
+// --- Attachments ---
+
+export interface Attachment {
+  /** Original filename (e.g. "plan.pdf", "screenshot.png") */
+  filename: string;
+  /** MIME type */
+  mediaType: string;
+  /** Base64-encoded file content */
+  data: string;
 }
 
 // --- Constants ---

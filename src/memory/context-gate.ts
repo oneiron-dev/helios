@@ -126,6 +126,7 @@ export class ContextGate {
       tree,
       "\nUse memory_read(path) for details on any item above.",
       "Use memory_write to store new findings as you work.",
+      "Check /sources/ for prior work you've built on — cite these in any writeups.",
       "Continue working toward your goal.",
     );
 

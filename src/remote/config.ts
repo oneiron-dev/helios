@@ -1,20 +1,17 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import type { RemoteMachine } from "./types.js";
+import { HELIOS_DIR } from "../paths.js";
 
-const CONFIG_DIR = join(homedir(), ".helios");
+const CONFIG_DIR = HELIOS_DIR;
 const MACHINES_FILE = join(CONFIG_DIR, "machines.json");
 
 function ensureConfigDir(): void {
-  if (!existsSync(CONFIG_DIR)) {
-    mkdirSync(CONFIG_DIR, { recursive: true });
-  }
+  mkdirSync(CONFIG_DIR, { recursive: true });
 }
 
 export function loadMachines(): RemoteMachine[] {
   try {
-    if (!existsSync(MACHINES_FILE)) return [];
     const data = readFileSync(MACHINES_FILE, "utf-8");
     const parsed = JSON.parse(data);
     if (!Array.isArray(parsed)) return [];

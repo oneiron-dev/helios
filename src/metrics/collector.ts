@@ -1,6 +1,7 @@
 import type { ConnectionPool } from "../remote/connection-pool.js";
 import { MetricStore, type MetricPoint } from "./store.js";
 import { type MetricPatterns, parseWithPatterns } from "./parser.js";
+import { shellQuote } from "../ui/format.js";
 
 export interface CollectorSource {
   taskId: string;
@@ -41,21 +42,21 @@ export class MetricCollector {
   }
 
   async collectAll(): Promise<MetricPoint[]> {
-    const allPoints: MetricPoint[] = [];
-
-    for (const source of this.sources) {
-      try {
-        const points = await this.collect(source);
-        if (points.length > 0) {
-          this.store.insertBatch(source.taskId, source.machineId, points);
-          allPoints.push(...points);
+    const results = await Promise.all(
+      this.sources.map(async (source) => {
+        try {
+          const points = await this.collect(source);
+          if (points.length > 0) {
+            this.store.insertBatch(source.taskId, source.machineId, points);
+          }
+          return points;
+        } catch {
+          return [];
         }
-      } catch {
-        // Silently skip failed collections
-      }
-    }
+      }),
+    );
 
-    return allPoints;
+    return results.flat();
   }
 
   private async collect(source: CollectorSource): Promise<MetricPoint[]> {
@@ -64,7 +65,7 @@ export class MetricCollector {
 
     const wcResult = await this.pool.exec(
       source.machineId,
-      `wc -l < '${source.logPath.replace(/'/g, "'\\''")}'`,
+      `wc -l < ${shellQuote(source.logPath)}`,
     );
     const totalLines = parseInt(wcResult.stdout.trim(), 10);
     if (isNaN(totalLines) || totalLines <= lastCount) {

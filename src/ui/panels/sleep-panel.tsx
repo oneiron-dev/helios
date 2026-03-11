@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 import { C, G } from "../theme.js";
 import { formatDuration } from "../format.js";

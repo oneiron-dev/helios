@@ -1,10 +1,9 @@
 import Database from "better-sqlite3";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { mkdirSync } from "node:fs";
 import { runMigrations } from "./migrations.js";
+import { HELIOS_DIR } from "../paths.js";
 
-const HELIOS_DIR = join(homedir(), ".helios");
 const DB_PATH = join(HELIOS_DIR, "helios.db");
 
 let _db: Database.Database | null = null;
@@ -14,6 +13,7 @@ export function getDb(): Database.Database {
     mkdirSync(HELIOS_DIR, { recursive: true });
     _db = new Database(DB_PATH);
     _db.pragma("journal_mode = WAL");
+    _db.pragma("busy_timeout = 5000");
     _db.pragma("foreign_keys = ON");
     runMigrations(_db);
   }

@@ -20,6 +20,7 @@ import {
   type SessionConfig,
   type AgentEvent,
   type ReasoningEffort,
+  type Attachment,
 } from "../types.js";
 import type { AuthManager } from "../auth/auth-manager.js";
 import { SessionStore } from "../../store/session-store.js";
@@ -50,7 +51,9 @@ type AnthropicContent =
   | { type: "text"; text: string }
   | { type: "thinking"; thinking: string }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
-  | { type: "tool_result"; tool_use_id: string; content: string; is_error?: boolean };
+  | { type: "tool_result"; tool_use_id: string; content: string; is_error?: boolean }
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
+  | { type: "document"; source: { type: "base64"; media_type: string; data: string } };
 
 // Internal streaming event
 type StreamResult =
@@ -83,9 +86,9 @@ export class ClaudeProvider implements ModelProvider {
   private cliPendingByName = new Map<string, string[]>();
   private cliToolResults: Array<{ callId: string; result: string; isError?: boolean }> = [];
 
-  constructor(authManager: AuthManager, preferredMode?: "cli" | "api") {
+  constructor(authManager: AuthManager, preferredMode?: "cli" | "api", sessionStore?: SessionStore) {
     this.authManager = authManager;
-    this.sessionStore = new SessionStore();
+    this.sessionStore = sessionStore ?? new SessionStore();
     this.preferredAuthMode = preferredMode === "cli" ? "cli" : preferredMode === "api" ? "api_key" : null;
   }
 
@@ -175,13 +178,19 @@ export class ClaudeProvider implements ModelProvider {
     session: Session,
     message: string,
     tools: ToolDefinition[],
+    attachments?: Attachment[],
   ): AsyncGenerator<AgentEvent> {
     if (this.authMode === "cli") {
+      if (attachments?.length) {
+        process.stderr.write(
+          "[helios] Warning: file attachments are not supported in Claude CLI mode. Switch to API mode (--claude-mode api) to send files.\n",
+        );
+      }
       yield* this.sendViaCli(session, message, tools);
     } else {
       const creds = await this.authManager.getCredentials("claude");
       if (!creds?.apiKey) throw new Error("No API key — re-authenticate");
-      yield* this.sendViaRawApi(session, message, tools, creds.apiKey);
+      yield* this.sendViaRawApi(session, message, tools, creds.apiKey, attachments);
     }
   }
 
@@ -316,9 +325,25 @@ export class ClaudeProvider implements ModelProvider {
     message: string,
     tools: ToolDefinition[],
     apiKey: string,
+    attachments?: Attachment[],
   ): AsyncGenerator<AgentEvent> {
     const history = this.conversationHistory.get(session.id) ?? [];
-    history.push({ role: "user", content: message });
+
+    // Build user message — plain text or multimodal with attachments
+    if (attachments && attachments.length > 0) {
+      const content: AnthropicContent[] = [];
+      for (const att of attachments) {
+        if (att.mediaType === "application/pdf") {
+          content.push({ type: "document", source: { type: "base64", media_type: att.mediaType, data: att.data } });
+        } else if (att.mediaType.startsWith("image/")) {
+          content.push({ type: "image", source: { type: "base64", media_type: att.mediaType, data: att.data } });
+        }
+      }
+      content.push({ type: "text", text: message });
+      history.push({ role: "user", content });
+    } else {
+      history.push({ role: "user", content: message });
+    }
 
     const MAX_RETRIES = 3;
     let continueLoop = true;
@@ -423,7 +448,26 @@ export class ClaudeProvider implements ModelProvider {
       }
     }
 
+    // Strip base64 data from attachment blocks so they aren't re-sent on every turn
+    this.stripAttachmentData(history);
     this.conversationHistory.set(session.id, history);
+  }
+
+  /** Remove attachment content blocks from history so they aren't re-sent to the API. */
+  private stripAttachmentData(history: AnthropicMessage[]): void {
+    for (const msg of history) {
+      if (!Array.isArray(msg.content)) continue;
+      msg.content = msg.content.map((block) => {
+        if (
+          (block.type === "image" || block.type === "document") &&
+          "source" in block &&
+          block.source.data.length > 100
+        ) {
+          return { type: "text" as const, text: `[${block.type} attachment stripped]` } as unknown as typeof block;
+        }
+        return block;
+      });
+    }
   }
 
   // ─── SSE Streaming for Raw API ──────────────────────
@@ -623,13 +667,16 @@ export class ClaudeProvider implements ModelProvider {
     return name.startsWith(prefix) ? name.slice(prefix.length) : name;
   }
 
+  private _cliAvailable: boolean | null = null;
   private isClaudeCliAvailable(): boolean {
+    if (this._cliAvailable !== null) return this._cliAvailable;
     try {
       execSync("which claude", { stdio: "ignore" });
-      return true;
+      this._cliAvailable = true;
     } catch {
-      return false;
+      this._cliAvailable = false;
     }
+    return this._cliAvailable;
   }
 
   private buildMcpServer(tools: ToolDefinition[]) {

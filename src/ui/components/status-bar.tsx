@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 import { C, G } from "../theme.js";
 import { formatDuration, truncate } from "../format.js";
@@ -44,7 +44,7 @@ export function StatusBar({ orchestrator, sleepManager, monitorManager }: Status
     sleeping: C.primary,
     waiting: C.dim,
     error: C.error,
-  }[state] as string;
+  }[state] ?? C.dim;
 
   return (
     <Box paddingX={1}>

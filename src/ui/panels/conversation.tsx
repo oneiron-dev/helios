@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 import { C, G, METRIC_COLORS, nameHash } from "../theme.js";
 import { renderMarkdown } from "../markdown.js";
 import { sparkline } from "./metrics-dashboard.js";
 import { truncate, formatMetricValue } from "../format.js";
-import type { Message, ToolData } from "../layout.js";
+import type { Message, ToolData } from "../types.js";
 
 interface ConversationPanelProps {
   messages: Message[];
@@ -445,7 +445,6 @@ function ShowMetricsDisplay({ tool }: { tool: ToolData }) {
 // ── start_monitor / stop_monitor ─────────────────────────────────────
 
 function MonitorDisplay({ tool }: { tool: ToolData }) {
-  const result = parseResult(tool);
   const goal = (tool.args.goal as string) ?? "";
   const interval = (tool.args.interval_minutes as number) ?? 2;
 
@@ -460,7 +459,7 @@ function MonitorDisplay({ tool }: { tool: ToolData }) {
   );
 }
 
-function MonitorStopDisplay({ tool }: { tool: ToolData }) {
+function MonitorStopDisplay(_props: { tool: ToolData }) {
   return (
     <Box flexDirection="column" paddingLeft={2}>
       <ToolHeader icon="⟳" label="monitor stopped" />

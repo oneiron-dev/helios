@@ -1,5 +1,6 @@
 import type { ToolDefinition } from "../providers/types.js";
 import type { ConnectionPool } from "../remote/connection-pool.js";
+import { shellQuote } from "../ui/format.js";
 
 export function createReadFileTool(pool: ConnectionPool): ToolDefinition {
   return {
@@ -186,6 +187,3 @@ export function createPatchFileTool(pool: ConnectionPool): ToolDefinition {
   };
 }
 
-function shellQuote(s: string): string {
-  return "'" + s.replace(/'/g, "'\\''") + "'";
-}

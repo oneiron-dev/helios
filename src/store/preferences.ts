@@ -1,8 +1,8 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { HELIOS_DIR } from "../paths.js";
 
-const CONFIG_DIR = join(homedir(), ".helios");
+const CONFIG_DIR = HELIOS_DIR;
 const PREFS_FILE = join(CONFIG_DIR, "preferences.json");
 
 export interface Preferences {

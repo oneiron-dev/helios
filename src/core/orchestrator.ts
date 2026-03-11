@@ -6,6 +6,7 @@ import type {
   SessionConfig,
   AgentEvent,
   ReasoningEffort,
+  Attachment,
 } from "../providers/types.js";
 import { AgentStateMachine } from "./state-machine.js";
 import { SessionStore } from "../store/session-store.js";
@@ -16,6 +17,8 @@ import type { StickyManager } from "./stickies.js";
 export interface OrchestratorConfig {
   defaultProvider: "claude" | "openai";
   systemPrompt: string;
+  agentId?: string;
+  sessionStore?: SessionStore;
 }
 
 export class Orchestrator {
@@ -28,11 +31,12 @@ export class Orchestrator {
   private _contextGate: ContextGate | null = null;
   private _stickyManager: StickyManager | null = null;
   readonly stateMachine = new AgentStateMachine();
-  readonly sessionStore = new SessionStore();
+  readonly sessionStore: SessionStore;
   readonly config: OrchestratorConfig;
 
   constructor(config: OrchestratorConfig) {
     this.config = config;
+    this.sessionStore = config.sessionStore ?? new SessionStore(config.agentId ?? "");
   }
 
   registerProvider(provider: ModelProvider): void {
@@ -136,7 +140,7 @@ export class Orchestrator {
     return session;
   }
 
-  async *send(message: string): AsyncGenerator<AgentEvent> {
+  async *send(message: string, attachments?: Attachment[]): AsyncGenerator<AgentEvent> {
     if (!this.activeProvider) {
       await this.switchProvider(this.config.defaultProvider);
     }
@@ -160,6 +164,7 @@ export class Orchestrator {
       session,
       augmentedMessage,
       this.tools,
+      attachments,
     )) {
       if (event.type === "text" && event.delta) {
         fullResponse += event.delta;
@@ -171,6 +176,15 @@ export class Orchestrator {
         }
         if (event.usage?.inputTokens) {
           this._lastInputTokens = event.usage.inputTokens;
+        }
+        // Persist cost to session
+        if (event.usage && session) {
+          this.sessionStore.addCost(
+            session.id,
+            event.usage.costUsd ?? 0,
+            event.usage.inputTokens ?? 0,
+            event.usage.outputTokens ?? 0,
+          );
         }
       }
 

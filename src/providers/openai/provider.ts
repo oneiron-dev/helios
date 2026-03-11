@@ -8,6 +8,7 @@ import {
   type SessionConfig,
   type AgentEvent,
   type ReasoningEffort,
+  type Attachment,
 } from "../types.js";
 import type { AuthManager } from "../auth/auth-manager.js";
 import { TransientError, isTransient, sleep } from "../retry.js";
@@ -25,7 +26,9 @@ const DEFAULT_MODEL = "gpt-5.4";
 
 type ContentItem =
   | { type: "input_text"; text: string }
-  | { type: "output_text"; text: string };
+  | { type: "output_text"; text: string }
+  | { type: "input_image"; image_url: string; detail?: string }
+  | { type: "input_file"; filename: string; file_data: string };
 
 type ResponseItem =
   | { type: "message"; role: "user" | "assistant"; content: ContentItem[] }
@@ -59,9 +62,9 @@ export class OpenAIProvider implements ModelProvider {
   private instructions = new Map<string, string>();
   private conversationHistory = new Map<string, ResponseItem[]>();
 
-  constructor(authManager: AuthManager) {
+  constructor(authManager: AuthManager, sessionStore?: SessionStore) {
     this.authManager = authManager;
-    this.sessionStore = new SessionStore();
+    this.sessionStore = sessionStore ?? new SessionStore();
     this.oauth = new OpenAIOAuth(authManager);
   }
 
@@ -167,18 +170,26 @@ export class OpenAIProvider implements ModelProvider {
     session: Session,
     message: string,
     tools: ToolDefinition[],
+    attachments?: Attachment[],
   ): AsyncGenerator<AgentEvent> {
     const creds = await this.authManager.getCredentials("openai");
     if (!creds?.accessToken) throw new Error("Not authenticated");
 
     const history = this.conversationHistory.get(session.id) ?? [];
 
-    // Add user message in Responses API format
-    history.push({
-      type: "message",
-      role: "user",
-      content: [{ type: "input_text", text: message }],
-    });
+    // Build user message — plain text or multimodal with attachments
+    const content: ContentItem[] = [];
+    if (attachments && attachments.length > 0) {
+      for (const att of attachments) {
+        if (att.mediaType.startsWith("image/")) {
+          content.push({ type: "input_image", image_url: `data:${att.mediaType};base64,${att.data}`, detail: "high" });
+        } else {
+          content.push({ type: "input_file", filename: att.filename, file_data: `data:${att.mediaType};base64,${att.data}` });
+        }
+      }
+    }
+    content.push({ type: "input_text", text: message });
+    history.push({ type: "message", role: "user", content });
 
     // Agent loop: send → stream response → tool calls → repeat
     const MAX_RETRIES = 3;
@@ -276,7 +287,25 @@ export class OpenAIProvider implements ModelProvider {
       }
     }
 
+    // Strip base64 data from attachment blocks so they aren't re-sent on every turn
+    this.stripAttachmentData(history);
     this.conversationHistory.set(session.id, history);
+  }
+
+  /** Remove attachment content blocks from history so they aren't re-sent to the API. */
+  private stripAttachmentData(history: ResponseItem[]): void {
+    for (const item of history) {
+      if (item.type !== "message" || !Array.isArray(item.content)) continue;
+      item.content = item.content.map((block) => {
+        if (block.type === "input_image" && block.image_url.length > 200) {
+          return { type: "input_text" as const, text: "[image attachment stripped]" } as unknown as typeof block;
+        }
+        if (block.type === "input_file" && block.file_data.length > 200) {
+          return { type: "input_text" as const, text: "[file attachment stripped]" } as unknown as typeof block;
+        }
+        return block;
+      });
+    }
   }
 
   resetHistory(session: Session, briefingMessage: string): void {

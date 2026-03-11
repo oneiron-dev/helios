@@ -1,6 +1,7 @@
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import type { ToolDefinition } from "../providers/types.js";
+import { formatError } from "../ui/format.js";
 
 export function createWebFetchTool(): ToolDefinition {
   return {
@@ -70,7 +71,7 @@ export function createWebFetchTool(): ToolDefinition {
         });
       } catch (err) {
         return JSON.stringify({
-          error: err instanceof Error ? err.message : String(err),
+          error: formatError(err),
         });
       }
     },

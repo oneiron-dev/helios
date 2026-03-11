@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
 import { C, G } from "../theme.js";
 import { COMMANDS, type SlashCommand } from "../commands.js";

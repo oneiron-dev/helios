@@ -31,3 +31,17 @@ export function truncate(s: string, max: number, flatten = false): string {
 export function formatError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+
+/** Format bytes to a compact human-readable string (e.g. "1.5G", "128M"). */
+export function formatBytes(bytes: number): string {
+  if (bytes >= 1e12) return `${(bytes / 1e12).toFixed(1)}T`;
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)}G`;
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(0)}M`;
+  if (bytes >= 1e3) return `${(bytes / 1e3).toFixed(0)}K`;
+  return `${bytes}B`;
+}
+
+/** Shell-escape a string using single quotes. */
+export function shellQuote(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}

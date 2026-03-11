@@ -24,25 +24,22 @@ export class MemoryStore {
   ls(dirPath = "/"): MemoryNode[] {
     const normalized = normalizeDirPath(dirPath);
     const db = getDb();
+    const prefixLen = normalized.length;
 
-    // Find direct children: paths that start with dirPath and have no further slashes
-    // For "/", children are like "/goal", "/experiments/"
-    // For "/experiments/", children are like "/experiments/01-baseline"
+    // Fetch all descendants, filter to direct children in JS (simple and correct)
+    // Only fetches gist-level columns to keep it lightweight (no content)
     const rows = db
       .prepare(
-        `SELECT path, gist, content, is_dir, created_at, updated_at
+        `SELECT path, gist, is_dir, created_at, updated_at
          FROM memory_nodes
          WHERE session_id = ? AND path LIKE ? AND path != ?`,
       )
       .all(this.sessionId, normalized + "%", normalized) as Record<string, unknown>[];
 
-    // Filter to direct children only
     return rows
       .filter((row) => {
-        const relPath = (row.path as string).slice(normalized.length);
-        // Direct child: no slashes, or exactly one trailing slash (directory)
-        const slashCount = (relPath.match(/\//g) || []).length;
-        return slashCount === 0 || (slashCount === 1 && relPath.endsWith("/"));
+        const rel = (row.path as string).slice(prefixLen);
+        return !rel.includes("/") || (rel.endsWith("/") && !rel.slice(0, -1).includes("/"));
       })
       .map(rowToNode);
   }
@@ -142,12 +139,10 @@ export class MemoryStore {
 
     const lines: string[] = [];
     for (const node of nodes) {
-      // Indent based on depth
-      const depth = node.path.split("/").filter(Boolean).length - 1;
+      const parts = node.path.split("/").filter(Boolean);
+      const depth = parts.length - 1;
       const indent = "  ".repeat(depth);
-      const name = node.isDir
-        ? node.path.split("/").filter(Boolean).pop() + "/"
-        : node.path.split("/").filter(Boolean).pop();
+      const name = parts[parts.length - 1] + (node.isDir ? "/" : "");
       lines.push(`${indent}${name}: ${node.gist}`);
     }
     return lines.join("\n");
@@ -161,17 +156,17 @@ export class MemoryStore {
 
   private ensureParents(path: string): void {
     const parts = path.split("/").filter(Boolean);
+    if (parts.length <= 1) return;
+    const db = getDb();
+    const now = Date.now();
+    const stmt = db.prepare(
+      `INSERT OR IGNORE INTO memory_nodes (session_id, path, gist, content, is_dir, created_at, updated_at)
+       VALUES (?, ?, ?, NULL, 1, ?, ?)`,
+    );
     // For "/a/b/c", ensure "/a/" and "/a/b/" exist
     for (let i = 1; i < parts.length; i++) {
       const parentPath = "/" + parts.slice(0, i).join("/") + "/";
-      if (!this.exists(parentPath)) {
-        const db = getDb();
-        const now = Date.now();
-        db.prepare(
-          `INSERT OR IGNORE INTO memory_nodes (session_id, path, gist, content, is_dir, created_at, updated_at)
-           VALUES (?, ?, ?, NULL, 1, ?, ?)`,
-        ).run(this.sessionId, parentPath, parts[i - 1], now, now);
-      }
+      stmt.run(this.sessionId, parentPath, parts[i - 1], now, now);
     }
   }
 }

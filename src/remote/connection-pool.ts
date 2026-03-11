@@ -1,6 +1,7 @@
 import { Client } from "ssh2";
 import { exec as cpExec, spawn } from "node:child_process";
 import { readFileSync, openSync, closeSync } from "node:fs";
+import { shellQuote, formatError } from "../ui/format.js";
 import type {
   RemoteMachine,
   ExecResult,
@@ -80,7 +81,7 @@ export class ConnectionPool {
       });
 
       client.on("error", (err) => {
-        const errMsg = err instanceof Error ? err.message : String(err);
+        const errMsg = formatError(err);
         const conn = this.connections.get(machineId);
         if (conn) {
           conn.connected = false;
@@ -116,7 +117,7 @@ export class ConnectionPool {
         try {
           connectConfig.privateKey = readFileSync(machine.keyPath);
         } catch (err) {
-          return reject(new Error(`Cannot read SSH key at ${machine.keyPath}: ${err instanceof Error ? err.message : String(err)}`));
+          return reject(new Error(`Cannot read SSH key at ${machine.keyPath}: ${formatError(err)}`));
         }
       } else if (machine.authMethod === "agent") {
         const sock = process.env.SSH_AUTH_SOCK;
@@ -199,7 +200,8 @@ export class ConnectionPool {
 
     // Remote: use nohup + & over SSH (SSH channels close cleanly)
     // PYTHONUNBUFFERED ensures Python flushes stdout immediately for live metric capture
-    const wrappedCmd = `PYTHONUNBUFFERED=1 nohup ${command} > ${log} 2>&1 & echo $!`;
+    // Write exit code to .exit file so we can retrieve it later (can't use `wait` from a different shell)
+    const wrappedCmd = `PYTHONUNBUFFERED=1 nohup sh -c '${command.replace(/'/g, "'\\''")}; echo $? > ${log}.exit' > ${log} 2>&1 & echo $!`;
     const result = await this.exec(machineId, wrappedCmd);
     const pid = parseInt(result.stdout.trim().split("\n").pop() ?? "", 10);
     if (isNaN(pid)) {
@@ -222,7 +224,9 @@ export class ConnectionPool {
 
         // Spawn detached with stdio redirected to log file
         // PYTHONUNBUFFERED ensures Python flushes stdout immediately for live metric capture
-        const child = spawn("/bin/bash", ["-c", command], {
+        // Wrap command to write exit code to .exit file for later retrieval
+        const wrappedCommand = `${command}; echo $? > ${logPath}.exit`;
+        const child = spawn("/bin/bash", ["-c", wrappedCommand], {
           detached: true,
           stdio: ["ignore", logFd, logFd],
           env: { ...process.env, PYTHONUNBUFFERED: "1" },
@@ -265,7 +269,7 @@ export class ConnectionPool {
     path: string,
     lines = 50,
   ): Promise<string> {
-    const result = await this.exec(machineId, `tail -n ${lines} '${path.replace(/'/g, "'\\''")}'`);
+    const result = await this.exec(machineId, `tail -n ${lines} ${shellQuote(path)}`);
     return result.stdout;
   }
 
