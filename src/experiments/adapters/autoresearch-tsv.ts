@@ -92,12 +92,13 @@ export class AutoresearchTsvAdapter implements ExperimentAdapter {
       }
 
       const { passed: gatesPassed, failures: gateFailures } = checkGates(metrics);
+      const composite = parseFloat(row.composite);
 
       return {
         id: row.commit ?? `row-${i}`,
         status,
         statusColor: resolveStatusColor(status),
-        compositeScore: isNaN(parseFloat(row.composite)) ? null : parseFloat(row.composite),
+        compositeScore: isNaN(composite) ? null : composite,
         metrics,
         description: row.description ?? "",
         parentId: i > 0 ? (rows[i - 1].commit ?? `row-${i - 1}`) : undefined,
