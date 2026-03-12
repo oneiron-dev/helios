@@ -98,32 +98,15 @@ export const StatusBar = memo(function StatusBar({ orchestrator, sleepManager, m
         </>
       )}
 
-      {sleeping && sleepSession && (() => {
-        // Calculate how many chars are left for the sleep reason
-        const usedWidth = 2 /* paddingX */
-          + 2 /* dot+space */
-          + (provider?.displayName ?? "—").length
-          + 3 /* dash */
-          + (model ?? "—").length
-          + 3 /* dash */
-          + (reasoning ?? "medium").length
-          + 3 /* dash */
-          + state.length
-          + 3 /* dash */
-          + 2 /* frame+space */
-          + formatDuration(elapsed).length
-          + 1; /* leading space before reason */
-        const termWidth = process.stdout.columns ?? 80;
-        const maxReason = Math.max(10, termWidth - usedWidth - 12 /* cost/monitor slack */);
-        return (
-          <>
-            <Text color={C.dim}>{" "}{G.dash}{" "}</Text>
-            <Text color={C.primary}>{SLEEP_FRAMES[frame]} </Text>
-            <Text color={C.dim}>{formatDuration(elapsed)}</Text>
-            <Text color={C.dim}> {truncate(sleepSession.trigger.sleepReason, maxReason, true)}</Text>
-          </>
-        );
-      })()}
+      {sleeping && sleepSession && <SleepSegment
+        provider={provider}
+        model={model}
+        reasoning={reasoning}
+        state={state}
+        frame={frame}
+        elapsed={elapsed}
+        sleepSession={sleepSession}
+      />}
 
       {monitorManager?.isActive && monitorManager.currentConfig && (
         <>
@@ -135,17 +118,7 @@ export const StatusBar = memo(function StatusBar({ orchestrator, sleepManager, m
         </>
       )}
 
-      {proseRuns && proseRuns.length > 0 && (() => {
-        const active = proseRuns.filter(r => r.status === "running").length;
-        return (
-          <>
-            <Text color={C.dim}>{" "}{G.dash}{" "}</Text>
-            <Text color={active > 0 ? C.primary : C.dim}>
-              {G.active} prose {active}/{proseRuns.length}
-            </Text>
-          </>
-        );
-      })()}
+      {proseRuns && proseRuns.length > 0 && <ProseSegment proseRuns={proseRuns} />}
 
       {experimentSummary && experimentSummary.totalCount > 0 && (
         <>
@@ -166,3 +139,52 @@ export const StatusBar = memo(function StatusBar({ orchestrator, sleepManager, m
     </Box>
   );
 });
+
+interface SleepSegmentProps {
+  provider: { displayName: string } | null | undefined;
+  model: string | null | undefined;
+  reasoning: string | null | undefined;
+  state: string;
+  frame: number;
+  elapsed: number;
+  sleepSession: { createdAt: number; trigger: { sleepReason: string } };
+}
+
+function SleepSegment({ provider, model, reasoning, state, frame, elapsed, sleepSession }: SleepSegmentProps) {
+  const usedWidth = 2 /* paddingX */
+    + 2 /* dot+space */
+    + (provider?.displayName ?? "—").length
+    + 3 /* dash */
+    + (model ?? "—").length
+    + 3 /* dash */
+    + (reasoning ?? "medium").length
+    + 3 /* dash */
+    + state.length
+    + 3 /* dash */
+    + 2 /* frame+space */
+    + formatDuration(elapsed).length
+    + 1; /* leading space before reason */
+  const termWidth = process.stdout.columns ?? 80;
+  const maxReason = Math.max(10, termWidth - usedWidth - 12 /* cost/monitor slack */);
+
+  return (
+    <>
+      <Text color={C.dim}>{" "}{G.dash}{" "}</Text>
+      <Text color={C.primary}>{SLEEP_FRAMES[frame]} </Text>
+      <Text color={C.dim}>{formatDuration(elapsed)}</Text>
+      <Text color={C.dim}> {truncate(sleepSession.trigger.sleepReason, maxReason, true)}</Text>
+    </>
+  );
+}
+
+function ProseSegment({ proseRuns }: { proseRuns: ProseRun[] }) {
+  const active = proseRuns.filter(r => r.status === "running").length;
+  return (
+    <>
+      <Text color={C.dim}>{" "}{G.dash}{" "}</Text>
+      <Text color={active > 0 ? C.primary : C.dim}>
+        {G.active} prose {active}/{proseRuns.length}
+      </Text>
+    </>
+  );
+}

@@ -4,7 +4,7 @@ import type { ExperimentSummary } from "../../experiments/types.js";
 
 interface ExperimentSummaryPanelProps {
   summary: ExperimentSummary | null;
-  width?: number;
+  width?: number; // accepted for consistency with other panels, unused currently
 }
 
 export function ExperimentSummaryPanel({ summary }: ExperimentSummaryPanelProps) {
