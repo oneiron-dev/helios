@@ -31,8 +31,11 @@ async function createByName(
       );
       return new ArenaSweepAdapter(artifactsDir);
     }
-    case "autoresearch-tsv":
-      return null;
+    case "autoresearch-tsv": {
+      const { AutoresearchTsvAdapter } = await import("./adapters/autoresearch-tsv.js");
+      const researchDir = config.researchDir as string | undefined;
+      return new AutoresearchTsvAdapter(projectRoot, researchDir);
+    }
     default:
       return null;
   }
@@ -53,12 +56,12 @@ async function autoDetect(projectRoot: string): Promise<ExperimentAdapter | null
     return new ArenaSweepAdapter(outerloopDir);
   }
 
-  // PR 4: autoresearch-tsv adapter
   if (
     existsSync(join(projectRoot, "research", "results.tsv")) &&
     existsSync(join(projectRoot, "research", "autoresearch.prose"))
   ) {
-    return null;
+    const { AutoresearchTsvAdapter } = await import("./adapters/autoresearch-tsv.js");
+    return new AutoresearchTsvAdapter(projectRoot);
   }
 
   // Fallback: scan artifacts dir for anything sweep-like
