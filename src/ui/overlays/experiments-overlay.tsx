@@ -53,8 +53,8 @@ export function ExperimentsOverlay({ adapter, executor, width, height, onClose }
 
   // Derive display list and selection index from selectedId
   const displayList = viewMode === "loom" ? flatRows.map((r) => r.experiment) : experiments;
-  const selectedIndex = selectedId ? displayList.findIndex((e) => e.id === selectedId) : 0;
-  const clampedIndex = Math.max(0, Math.min(selectedIndex >= 0 ? selectedIndex : 0, displayList.length - 1));
+  const resolvedIndex = selectedId ? displayList.findIndex((e) => e.id === selectedId) : -1;
+  const clampedIndex = resolvedIndex >= 0 ? resolvedIndex : 0;
   const selected = displayList[clampedIndex] ?? null;
 
   useInput((input, key) => {
@@ -115,13 +115,6 @@ export function ExperimentsOverlay({ adapter, executor, width, height, onClose }
       }
     }
   });
-
-  // Clamp selection when list changes
-  useEffect(() => {
-    if (displayList.length > 0 && clampedIndex >= displayList.length) {
-      setSelectedId(displayList[displayList.length - 1]?.id ?? null);
-    }
-  }, [displayList.length, clampedIndex]);
 
   // Clear action message after 5 seconds
   useEffect(() => {
