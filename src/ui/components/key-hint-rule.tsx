@@ -2,7 +2,7 @@ import React, { memo } from "react";
 import { Box, Text } from "ink";
 import { C, G } from "../theme.js";
 
-const HINTS = [
+const BASE_HINTS = [
   { key: "esc", label: "interrupt" },
   { key: "^t", label: "tasks" },
   { key: "^g", label: "graphs" },
@@ -10,11 +10,19 @@ const HINTS = [
   { key: "^e", label: "experiments" },
 ];
 
-export const KeyHintRule = memo(function KeyHintRule() {
+interface KeyHintRuleProps {
+  hasMultipleGroups?: boolean;
+}
+
+export const KeyHintRule = memo(function KeyHintRule({ hasMultipleGroups }: KeyHintRuleProps) {
   const w = process.stdout.columns || 80;
 
+  const hints = hasMultipleGroups
+    ? [...BASE_HINTS, { key: "^p", label: "panels" }]
+    : BASE_HINTS;
+
   let hintsWidth = 0;
-  for (const h of HINTS) {
+  for (const h of hints) {
     hintsWidth += 2 + h.key.length + 1 + h.label.length + 1;
   }
   const fill = Math.max(0, w - hintsWidth);
@@ -22,7 +30,7 @@ export const KeyHintRule = memo(function KeyHintRule() {
   return (
     <Box>
       <Text color={C.primary}>{G.rule.repeat(fill)}</Text>
-      {HINTS.map((h, i) => (
+      {hints.map((h, i) => (
         <React.Fragment key={i}>
           {i === 0 ? (
             <Text color={C.dim}> </Text>
