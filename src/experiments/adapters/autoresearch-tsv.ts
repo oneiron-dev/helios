@@ -1,5 +1,6 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type {
   Experiment,
   ExperimentAdapter,
@@ -65,6 +66,7 @@ export class AutoresearchTsvAdapter implements ExperimentAdapter {
   name = "Autoresearch NER";
 
   private projectRoot: string;
+  private researchDir: string;
   private tsvPath: string;
   private experiments: Experiment[] = [];
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -73,12 +75,14 @@ export class AutoresearchTsvAdapter implements ExperimentAdapter {
 
   constructor(projectRoot: string, researchDir?: string) {
     this.projectRoot = projectRoot;
-    const dir = researchDir ?? join(projectRoot, "research");
-    this.tsvPath = join(dir, "results.tsv");
+    this.researchDir = researchDir ?? join(projectRoot, "research");
+    this.tsvPath = join(this.researchDir, "results.tsv");
   }
 
   async load(): Promise<Experiment[]> {
     const rows = this.parseTsv();
+    const reasoning = this.loadReasoning(rows.map((r) => r.commit).filter(Boolean));
+
     this.experiments = rows.map((row, i) => {
       const status = (row.status ?? "").toLowerCase();
       const metrics: Record<string, number> = {};
@@ -93,9 +97,10 @@ export class AutoresearchTsvAdapter implements ExperimentAdapter {
 
       const { passed: gatesPassed, failures: gateFailures } = checkGates(metrics);
       const composite = parseFloat(row.composite);
+      const commitId = row.commit ?? `row-${i}`;
 
       return {
-        id: row.commit ?? `row-${i}`,
+        id: commitId,
         status,
         statusColor: resolveStatusColor(status),
         compositeScore: isNaN(composite) ? null : composite,
@@ -108,6 +113,7 @@ export class AutoresearchTsvAdapter implements ExperimentAdapter {
           row_number: i + 1,
           gatesPassed,
           gateFailures,
+          reasoning: reasoning.get(commitId) ?? null,
         },
       };
     });
@@ -152,6 +158,13 @@ export class AutoresearchTsvAdapter implements ExperimentAdapter {
       ].join("\n"),
     });
 
+    // 2. Captain reasoning (if available)
+    const reasoning = exp.metadata.reasoning as string | null;
+    if (reasoning) {
+      sections.push({ title: "Captain Reasoning", content: reasoning });
+    }
+
+    // 3. Composite breakdown
     const breakdownLines = COMPOSITE_WEIGHTS.map((w) => {
       const val = exp.metrics[w.key] ?? 0;
       const contribution = val * w.weight;
@@ -306,6 +319,85 @@ export class AutoresearchTsvAdapter implements ExperimentAdapter {
   }
 
   // ─── Private helpers ─────────────────────────────────
+
+  /**
+   * Load captain reasoning with 3-tier priority:
+   * 1. Structured sidecar: research/reasoning.jsonl
+   * 2. Git log fallback: commit messages for each experiment commit
+   * 3. TSV description column (already in experiment.description, not here)
+   */
+  private loadReasoning(commitIds: string[]): Map<string, string> {
+    // Tier 1: reasoning.jsonl sidecar
+    const sidecar = this.loadReasoningJsonl();
+    if (sidecar.size > 0) return sidecar;
+
+    // Tier 2: git log fallback
+    if (commitIds.length > 0) {
+      return this.loadGitReasoning(commitIds);
+    }
+
+    return new Map();
+  }
+
+  private loadReasoningJsonl(): Map<string, string> {
+    const jsonlPath = join(this.researchDir, "reasoning.jsonl");
+    if (!existsSync(jsonlPath)) return new Map();
+
+    try {
+      const raw = readFileSync(jsonlPath, "utf-8");
+      const map = new Map<string, string>();
+      for (const line of raw.split(/\r?\n/)) {
+        if (!line.trim()) continue;
+        try {
+          const entry = JSON.parse(line) as { experimentId?: string; reasoning?: string };
+          if (entry.experimentId && entry.reasoning) {
+            map.set(entry.experimentId, entry.reasoning);
+          }
+        } catch { /* skip malformed lines */ }
+      }
+      return map;
+    } catch {
+      return new Map();
+    }
+  }
+
+  private loadGitReasoning(commitIds: string[]): Map<string, string> {
+    const map = new Map<string, string>();
+    // Resolve git dir: use the research dir's repo, or fall back to projectRoot
+    const gitDir = this.findGitRoot();
+    if (!gitDir) return map;
+
+    for (const commitId of commitIds) {
+      try {
+        const msg = execFileSync(
+          "git", ["log", "-1", "--format=%B", commitId],
+          { cwd: gitDir, encoding: "utf-8", timeout: 5000 },
+        ).trim();
+        if (msg) map.set(commitId, msg);
+      } catch { /* commit not found in this repo — skip */ }
+    }
+    return map;
+  }
+
+  private findGitRoot(): string | null {
+    // Check if researchDir is inside a git repo
+    try {
+      return execFileSync(
+        "git", ["rev-parse", "--show-toplevel"],
+        { cwd: this.researchDir, encoding: "utf-8", timeout: 3000 },
+      ).trim();
+    } catch {
+      // researchDir might not exist or not be a git repo
+      try {
+        return execFileSync(
+          "git", ["rev-parse", "--show-toplevel"],
+          { cwd: this.projectRoot, encoding: "utf-8", timeout: 3000 },
+        ).trim();
+      } catch {
+        return null;
+      }
+    }
+  }
 
   private readTsvRaw(): string {
     try {
