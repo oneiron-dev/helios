@@ -29,4 +29,6 @@ export interface TaskInfo {
   lastToolCall?: string;
   /** Rolling activity log (subagents only). */
   log?: Array<{ timestamp: number; type: string; summary: string }>;
+  groupId?: string;
+  groupLabel?: string;
 }

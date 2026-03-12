@@ -25,6 +25,10 @@ export interface BackgroundProcess {
   metricNames?: string[];
   /** Custom regex patterns: metric name → regex with one capture group */
   metricPatterns?: Record<string, string>;
+  /** Grouping: e.g. "prose:20260312-abc123" or "exp:candidate_42" */
+  groupId?: string;
+  /** Human-readable group label: e.g. "prose: outerloop" */
+  groupLabel?: string;
 }
 
 export interface ConnectionStatus {

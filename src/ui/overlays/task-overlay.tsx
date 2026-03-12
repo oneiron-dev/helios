@@ -7,6 +7,29 @@ import { OverlayHeader } from "../components/overlay-header.js";
 import type { TaskInfo } from "../types.js";
 import type { RemoteExecutor } from "../../remote/executor.js";
 
+// ─── Task grouping ──────────────────────────────────
+
+export interface TaskGroup {
+  groupId: string | null;
+  label: string;
+  tasks: TaskInfo[];
+}
+
+export function groupTasks(tasks: TaskInfo[]): TaskGroup[] {
+  const groups = new Map<string | null, TaskInfo[]>();
+  for (const task of tasks) {
+    const key = task.groupId ?? null;
+    const arr = groups.get(key) ?? [];
+    arr.push(task);
+    groups.set(key, arr);
+  }
+  return Array.from(groups.entries()).map(([id, items]) => ({
+    groupId: id,
+    label: items[0]?.groupLabel ?? (id ?? "ungrouped"),
+    tasks: items,
+  }));
+}
+
 interface TaskOverlayProps {
   tasks: TaskInfo[];
   executor?: RemoteExecutor;
@@ -21,7 +44,10 @@ export function TaskOverlay({ tasks, executor, width, height, onClose }: TaskOve
   const [outputError, setOutputError] = useState<string | null>(null);
   const scrollRef = useRef<ScrollViewRef>(null);
 
-  const selected = tasks[selectedIndex] ?? null;
+  // Build grouped structure and flat task list for selection
+  const groups = groupTasks(tasks);
+  const flatTasks = groups.flatMap((g) => g.tasks);
+  const selected = flatTasks[selectedIndex] ?? null;
 
   // Fetch output for the selected task
   const fetchOutput = useCallback(async () => {
@@ -61,24 +87,28 @@ export function TaskOverlay({ tasks, executor, width, height, onClose }: TaskOve
       onClose();
       return;
     }
-    if (key.upArrow && tasks.length > 0) {
+    if (key.upArrow && flatTasks.length > 0) {
       setSelectedIndex((i) => Math.max(0, i - 1));
     }
-    if (key.downArrow && tasks.length > 0) {
-      setSelectedIndex((i) => Math.min(tasks.length - 1, i + 1));
+    if (key.downArrow && flatTasks.length > 0) {
+      setSelectedIndex((i) => Math.min(flatTasks.length - 1, i + 1));
     }
   });
 
   // Clamp selection
   useEffect(() => {
-    if (selectedIndex >= tasks.length && tasks.length > 0) {
-      setSelectedIndex(tasks.length - 1);
+    if (selectedIndex >= flatTasks.length && flatTasks.length > 0) {
+      setSelectedIndex(flatTasks.length - 1);
     }
-  }, [tasks.length]);
+  }, [flatTasks.length]);
 
   const listWidth = Math.min(35, Math.floor(width * 0.3));
   const outputWidth = width - listWidth - 1; // 1 for separator
   const bodyHeight = height - 2; // header + hint
+
+  // Track the flat index across groups for selection
+  let flatIdx = 0;
+  const showGroupHeaders = groups.length > 1 || groups[0]?.groupId !== null;
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -94,26 +124,48 @@ export function TaskOverlay({ tasks, executor, width, height, onClose }: TaskOve
               <Text color={C.dim}>no tasks</Text>
             </Box>
           ) : (
-            tasks.map((task, i) => {
-              const isSelected = i === selectedIndex;
-              const icon = task.status === "running" ? G.dot
-                : task.status === "completed" ? G.dotDim
-                : G.active;
-              const color = task.status === "running" ? C.primary
-                : task.status === "completed" ? C.success
-                : C.error;
-              const elapsed = formatDuration(Date.now() - task.startedAt);
-              const nameMax = listWidth - 6;
-              return (
-                <Box key={task.id} paddingLeft={1}>
-                  <Text color={isSelected ? C.bright : color} bold={isSelected} inverse={isSelected}>
-                    {icon} {truncate(task.machineId, 8)}
-                  </Text>
-                  <Text color={isSelected ? C.bright : C.dim} inverse={isSelected}>
-                    {" "}{elapsed}
-                  </Text>
-                </Box>
-              );
+            groups.map((group) => {
+              const groupNodes: React.ReactNode[] = [];
+
+              // Group header
+              if (showGroupHeaders) {
+                groupNodes.push(
+                  <Box key={`gh-${group.groupId}`} paddingLeft={1}>
+                    <Text color={C.primary} bold>
+                      {G.section} {truncate(group.label, listWidth - 4)}
+                    </Text>
+                  </Box>
+                );
+              }
+
+              // Tasks in this group
+              group.tasks.forEach((task, ti) => {
+                const isSelected = flatIdx === selectedIndex;
+                const icon = task.status === "running" ? G.dot
+                  : task.status === "completed" ? G.dotDim
+                  : G.active;
+                const color = task.status === "running" ? C.primary
+                  : task.status === "completed" ? C.success
+                  : C.error;
+                const elapsed = formatDuration(Date.now() - task.startedAt);
+                const isLast = ti === group.tasks.length - 1;
+                const prefix = showGroupHeaders ? (isLast ? G.branchEnd : G.branch) + " " : "";
+
+                groupNodes.push(
+                  <Box key={task.id} paddingLeft={1}>
+                    <Text color={isSelected ? C.bright : C.dim}>{prefix}</Text>
+                    <Text color={isSelected ? C.bright : color} bold={isSelected} inverse={isSelected}>
+                      {icon} {truncate(task.machineId, 8)}
+                    </Text>
+                    <Text color={isSelected ? C.bright : C.dim} inverse={isSelected}>
+                      {" "}{elapsed}
+                    </Text>
+                  </Box>
+                );
+                flatIdx++;
+              });
+
+              return groupNodes;
             })
           )}
         </Box>
