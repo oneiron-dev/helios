@@ -26,7 +26,7 @@ import { HubClient } from "./hub/client.js";
 import { formatError, toolError } from "./ui/format.js";
 import { getAgentId, WEB_SEARCH_TOOL, debugLog, isDebug } from "./paths.js";
 import { loadMachines } from "./remote/config.js";
-import { loadPreferences } from "./store/preferences.js";
+import { loadPreferences, savePreferences } from "./store/preferences.js";
 import { SessionStore } from "./store/session-store.js";
 import {
   createRemoteExecTool,
@@ -286,6 +286,17 @@ export async function createRuntime(options: RuntimeOptions = {}): Promise<Helio
   const projectConfig = findProjectConfig();
 
   const prefs = loadPreferences();
+
+  // Migrate legacy global model/reasoning to per-provider prefs
+  if ((prefs.model || prefs.reasoningEffort) && !prefs.claude?.model && !prefs.openai?.model) {
+    const target = prefs.lastProvider ?? "claude";
+    const migrated = { model: prefs.model, reasoningEffort: prefs.reasoningEffort };
+    prefs[target] = { ...prefs[target], ...migrated };
+    delete prefs.model;
+    delete prefs.reasoningEffort;
+    savePreferences(prefs);
+  }
+
   const initialProvider = options.provider ?? projectConfig?.provider ?? prefs.lastProvider ?? "claude";
   const initialClaudeMode = options.claudeMode ?? prefs.claudeAuthMode;
   const agentId = getAgentId();
@@ -437,9 +448,12 @@ export async function createRuntime(options: RuntimeOptions = {}): Promise<Helio
   // Activate provider — await so it's ready before callers use the runtime
   try {
     await orch.switchProvider(initialProvider);
-    const model = projectConfig?.model ?? prefs.model;
+    // Apply per-provider preferences (legacy global prefs migrated above)
+    const providerPrefs = prefs[initialProvider];
+    const model = projectConfig?.model ?? providerPrefs?.model;
     if (model) await orch.setModel(model);
-    if (prefs.reasoningEffort) await orch.setReasoningEffort(prefs.reasoningEffort as any);
+    const reasoning = providerPrefs?.reasoningEffort;
+    if (reasoning) await orch.setReasoningEffort(reasoning as any);
   } catch (err) {
     process.stderr.write(`[helios] Failed to authenticate ${initialProvider} provider: ${formatError(err)}\n`);
   }

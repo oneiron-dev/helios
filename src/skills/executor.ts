@@ -66,6 +66,13 @@ async function* runOnce(
   orch: Orchestrator,
 ): AsyncGenerator<AgentEvent> {
   const systemPrompt = renderTemplate(skill.template, args);
+
+  // Temporarily override provider model if skill specifies one
+  const originalModel = provider.currentModel;
+  if (skill.config.model) {
+    provider.currentModel = skill.config.model;
+  }
+
   const session = await provider.createSession({
     systemPrompt,
     model: skill.config.model ?? undefined,
@@ -83,6 +90,10 @@ async function* runOnce(
     // Ensure inner generator is closed on early termination (preserves yield* semantics)
     await stream.return(undefined).catch(() => {});
     await provider.closeSession(session).catch(() => {});
+    // Restore original model
+    if (skill.config.model) {
+      provider.currentModel = originalModel;
+    }
   }
 }
 

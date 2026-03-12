@@ -6,6 +6,7 @@
 
 import { Effect, Option } from "effect";
 import { Command, Args, Options } from "@effect/cli";
+import { provider, model } from "./options.js";
 
 const interests = Args.text({ name: "interests" }).pipe(
   Args.withDescription("Research interests / topics to focus on"),
@@ -20,13 +21,16 @@ const delayOpt = Options.integer("delay").pipe(
 
 export const discover = Command.make(
   "discover",
-  { interests, delay: delayOpt },
-  ({ interests: interestsOpt, delay: delayOpt }) =>
+  { interests, delay: delayOpt, provider, model },
+  ({ interests: interestsOpt, delay: delayOpt, provider: providerOpt, model: modelOpt }) =>
     Effect.promise(async () => {
       const { createRuntime } = await import("../init.js");
       const { executeSkill } = await import("../skills/executor.js");
 
-      const runtime = await createRuntime();
+      const providerChoice = Option.getOrUndefined(providerOpt) as "claude" | "openai" | undefined;
+      const modelChoice = Option.getOrUndefined(modelOpt);
+
+      const runtime = await createRuntime({ provider: providerChoice });
 
       if (!runtime.orchestrator.currentProvider) {
         process.stderr.write("No active provider. Authenticate first with 'helios auth login'.\n");
@@ -41,10 +45,16 @@ export const discover = Command.make(
         process.exit(1);
       }
 
-      // Override delay if specified
+      // Override skill config from CLI flags
       const delay = Option.getOrUndefined(delayOpt);
       if (delay !== undefined) {
         skill.config.delay_ms = delay * 1000;
+      }
+      if (modelChoice) {
+        skill.config.model = modelChoice;
+      }
+      if (providerChoice) {
+        skill.config.provider = providerChoice;
       }
 
       const interestsText = Option.getOrUndefined(interestsOpt) ?? "general ML research";

@@ -1,6 +1,7 @@
 ---
 name: discover
 description: Background literature discovery — slowly browses papers and ingests findings
+provider: claude
 model: claude-haiku-4-5-20251001
 loop: true
 delay_ms: 60000

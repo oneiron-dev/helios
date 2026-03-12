@@ -12,7 +12,7 @@ import type { Message } from "./types.js";
 import { formatError, formatMetricValue } from "./format.js";
 import { sparkline } from "./panels/metrics-dashboard.js";
 import { ClaudeProvider } from "../providers/claude/provider.js";
-import { savePreferences } from "../store/preferences.js";
+import { loadPreferences, savePreferences } from "../store/preferences.js";
 import {
   loadMachines,
   addMachine as addMachineConfig,
@@ -220,7 +220,11 @@ function cmdModel(args: string[], ctx: CommandContext): void {
   addMessage("system", `Setting model to ${modelId}...`);
   orchestrator.setModel(modelId).then(
     () => {
-      savePreferences({ model: modelId });
+      const provider = orchestrator.currentProvider?.name;
+      if (provider) {
+        const existing = loadPreferences();
+        savePreferences({ [provider]: { ...existing[provider], model: modelId } });
+      }
       addMessage("system", `Model set to ${modelId}`);
     },
     (err) => addMessage("error", `Failed to set model: ${formatError(err)}`),
@@ -253,7 +257,11 @@ function cmdReasoning(args: string[], ctx: CommandContext): void {
   }
   orchestrator.setReasoningEffort(level as ReasoningEffort).then(
     () => {
-      savePreferences({ reasoningEffort: level });
+      const provider = orchestrator.currentProvider?.name;
+      if (provider) {
+        const existing = loadPreferences();
+        savePreferences({ [provider]: { ...existing[provider], reasoningEffort: level } });
+      }
       addMessage("system", `Reasoning effort set to ${level}`);
     },
     (err) => addMessage("error", `Failed: ${formatError(err)}`),
