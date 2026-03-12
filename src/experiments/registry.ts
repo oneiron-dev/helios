@@ -68,7 +68,7 @@ async function autoDetect(projectRoot: string): Promise<ExperimentAdapter | null
   if (existsSync(artifactsDir)) {
     try {
       const entries = readdirSync(artifactsDir);
-      const hasSweeps = entries.some((e: string) => e.startsWith("search_sweep") || e.includes("sweep"));
+      const hasSweeps = entries.some((e) => e.startsWith("search_sweep") || e.includes("sweep"));
       if (hasSweeps) {
         const { ArenaSweepAdapter } = await import("./adapters/arena-sweep.js");
         return new ArenaSweepAdapter(artifactsDir);
