@@ -26,7 +26,7 @@ export function ExperimentsOverlay({ adapter, width, height, onClose }: Experime
 
   useEffect(() => {
     refresh();
-    const unsubscribe = adapter.onUpdate(() => { void refresh(); });
+    const unsubscribe = adapter.onUpdate(() => refresh());
     return unsubscribe;
   }, [adapter, refresh]);
 

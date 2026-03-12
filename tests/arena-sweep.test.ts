@@ -152,14 +152,40 @@ describe("ArenaSweepAdapter", () => {
     assert.strictEqual(summary.bestScore, null);
   });
 
-  test("removes update listeners on unsubscribe", () => {
+  test("removes update listeners on unsubscribe", async () => {
     const adapter = new ArenaSweepAdapter(TEST_DIR);
-    const unsubscribe = adapter.onUpdate(() => {});
+    let tick = 0;
+    (adapter as any).load = async function() {
+      tick += 1;
+      this.experiments = [
+        {
+          id: `candidate_${tick}`,
+          status: "running",
+          statusColor: "primary",
+          compositeScore: null,
+          metrics: {},
+          description: "",
+          metadata: {},
+        },
+      ];
+      return this.experiments;
+    };
 
-    assert.strictEqual((adapter as any).callbacks.length, 1);
+    let updates = 0;
+    const unsubscribe = adapter.onUpdate(() => {
+      updates += 1;
+    });
+    adapter.startPolling(5);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     unsubscribe();
+    const updatesAfterUnsubscribe = updates;
 
-    assert.strictEqual((adapter as any).callbacks.length, 0);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    adapter.stopPolling();
+
+    assert.ok(updatesAfterUnsubscribe > 0);
+    assert.strictEqual(updates, updatesAfterUnsubscribe);
   });
 });
