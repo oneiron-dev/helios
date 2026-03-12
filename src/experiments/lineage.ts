@@ -6,7 +6,6 @@ import type { Experiment, LineageInfo } from "./types.js";
 export interface TreeNode {
   experiment: Experiment;
   children: TreeNode[];
-  depth: number;
 }
 
 export interface FlatTreeRow {
@@ -34,42 +33,49 @@ function sortDescendants(node: TreeNode): void {
   for (const child of node.children) sortDescendants(child);
 }
 
-/** Merge lineage info onto experiments (mutates in place). */
-function applyLineage(experiments: Experiment[], lineage: LineageInfo[]): void {
+/** Merge lineage info onto experiment copies (does not mutate originals). */
+function applyLineage(experiments: Experiment[], lineage: LineageInfo[]): Experiment[] {
   const map = new Map(lineage.map((l) => [l.experimentId, l]));
-  for (const exp of experiments) {
+  return experiments.map((exp) => {
     const info = map.get(exp.id);
-    if (!info) continue;
-    exp.primaryParentId = info.primaryParentId ?? exp.primaryParentId;
-    exp.parentIds = info.parentIds ?? exp.parentIds;
-    exp.familyId = info.familyId ?? exp.familyId;
-    exp.generation = info.generation ?? exp.generation;
-    exp.branchLabel = info.branchLabel ?? exp.branchLabel;
-  }
+    if (!info) return exp;
+    return {
+      ...exp,
+      primaryParentId: info.primaryParentId ?? exp.primaryParentId,
+      parentIds: info.parentIds ?? exp.parentIds,
+      familyId: info.familyId ?? exp.familyId,
+      generation: info.generation ?? exp.generation,
+      branchLabel: info.branchLabel ?? exp.branchLabel,
+    };
+  });
 }
 
 /**
  * Build a forest of TreeNodes from experiments and optional lineage info.
  * Roots are experiments with no resolvable parent.
+ * Self-references and cycles are treated as roots.
  */
 export function buildForest(experiments: Experiment[], lineage?: LineageInfo[]): TreeNode[] {
   if (experiments.length === 0) return [];
 
-  if (lineage && lineage.length > 0) {
-    applyLineage(experiments, lineage);
-  }
+  const resolved = lineage && lineage.length > 0
+    ? applyLineage(experiments, lineage)
+    : experiments;
 
   // Build node map
   const nodeMap = new Map<string, TreeNode>();
-  for (const exp of experiments) {
-    nodeMap.set(exp.id, { experiment: exp, children: [], depth: 0 });
+  for (const exp of resolved) {
+    nodeMap.set(exp.id, { experiment: exp, children: [] });
   }
 
   // Wire children via primaryParentId (fall back to parentId)
+  // Guard against self-references; cycles are broken by treating them as roots
   const roots: TreeNode[] = [];
   for (const node of nodeMap.values()) {
     const parentId = node.experiment.primaryParentId ?? node.experiment.parentId;
-    const parent = parentId ? nodeMap.get(parentId) : undefined;
+    const parent = parentId && parentId !== node.experiment.id
+      ? nodeMap.get(parentId)
+      : undefined;
     if (parent) {
       parent.children.push(node);
     } else {
@@ -87,11 +93,16 @@ export function buildForest(experiments: Experiment[], lineage?: LineageInfo[]):
 
 /**
  * Flatten a forest into rows with pre-computed connector strings for rendering.
+ * Uses a visited set to protect against cycles.
  */
 export function flattenForest(roots: TreeNode[]): FlatTreeRow[] {
   const rows: FlatTreeRow[] = [];
+  const visited = new Set<string>();
 
   function walk(node: TreeNode, depth: number, ancestorHasMore: boolean[]): void {
+    if (visited.has(node.experiment.id)) return;
+    visited.add(node.experiment.id);
+
     rows.push({
       experiment: node.experiment,
       depth,

@@ -238,28 +238,39 @@ export class ArenaSweepAdapter implements ExperimentAdapter {
     // Index experiments by ID for O(1) parent chain lookups
     const byId = new Map(this.experiments.map((e) => [e.id, e]));
 
+    /** Walk parent chain to root, returning [generation, rootId]. */
+    const walkToRoot = (startId: string | undefined): [number, string | undefined] => {
+      let generation = 0;
+      let rootId = startId;
+      let cur = startId;
+      const visited = new Set<string>();
+      while (cur && !visited.has(cur)) {
+        visited.add(cur);
+        rootId = cur;
+        generation++;
+        const parent = byId.get(cur);
+        const nextRef = (parent?.metadata.source_name ?? parent?.metadata.source) as string | undefined;
+        if (!nextRef || !byId.has(nextRef)) break;
+        cur = nextRef;
+      }
+      return [generation, rootId];
+    };
+
     return this.experiments.map((exp) => {
       const parentRef = (exp.metadata.source_name ?? exp.metadata.source) as string | undefined;
       const primaryParentId = parentRef && parentRef !== exp.id && byId.has(parentRef)
         ? parentRef
         : undefined;
 
-      // Walk parent chain to compute generation depth
-      let generation = 0;
-      let cur = primaryParentId;
-      while (cur) {
-        generation++;
-        const parent = byId.get(cur);
-        const nextRef = (parent?.metadata.source_name ?? parent?.metadata.source) as string | undefined;
-        if (!nextRef || nextRef === cur || !byId.has(nextRef)) break;
-        cur = nextRef;
-      }
+      const [generation, rootId] = primaryParentId
+        ? walkToRoot(primaryParentId)
+        : [0, undefined];
 
       const notes = exp.metadata.notes as string | undefined;
       return {
         experimentId: exp.id,
         primaryParentId,
-        familyId: parentRef ?? exp.id,
+        familyId: rootId ?? exp.id,
         generation,
         branchLabel: notes ? notes.slice(0, 50) : undefined,
       };

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { buildForest, flattenForest, computeConnectors } from "../src/experiments/lineage.js";
+import { buildForest, flattenForest, computeConnectors, type TreeNode } from "../src/experiments/lineage.js";
 import type { Experiment, LineageInfo } from "../src/experiments/types.js";
 
 function makeExp(overrides: Partial<Experiment> & { id: string }): Experiment {
@@ -115,6 +115,30 @@ describe("buildForest", () => {
     expect(roots[0].experiment.id).toBe("scored");
     expect(roots[1].experiment.id).toBe("unscored");
   });
+
+  it("treats self-referencing experiment as root", () => {
+    const exps = [
+      makeExp({ id: "self", primaryParentId: "self" }),
+      makeExp({ id: "normal" }),
+    ];
+    const roots = buildForest(exps);
+    expect(roots).toHaveLength(2);
+    expect(roots.every((r) => r.children.length === 0)).toBe(true);
+  });
+
+  it("does not mutate input experiments when lineage is provided", () => {
+    const exps = [
+      makeExp({ id: "a" }),
+      makeExp({ id: "b" }),
+    ];
+    const lineage: LineageInfo[] = [
+      { experimentId: "b", primaryParentId: "a", generation: 1, branchLabel: "test" },
+    ];
+    buildForest(exps, lineage);
+    // Original experiment objects should be unchanged
+    expect(exps[1].primaryParentId).toBeUndefined();
+    expect(exps[1].branchLabel).toBeUndefined();
+  });
 });
 
 describe("flattenForest", () => {
@@ -144,6 +168,18 @@ describe("flattenForest", () => {
     expect(rows[0].isRoot).toBe(true);
     expect(rows[1].isRoot).toBe(false);
     expect(rows[2].isRoot).toBe(true);
+  });
+
+  it("handles cycles without infinite recursion", () => {
+    // Manually create a cycle: A -> B -> A
+    const a: TreeNode = { experiment: makeExp({ id: "a" }), children: [] };
+    const b: TreeNode = { experiment: makeExp({ id: "b" }), children: [] };
+    a.children.push(b);
+    b.children.push(a); // cycle!
+    const rows = flattenForest([a]);
+    // Should visit each node exactly once
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.experiment.id)).toEqual(["a", "b"]);
   });
 
   it("sets correct depths", () => {
