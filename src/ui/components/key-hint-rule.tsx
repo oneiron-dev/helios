@@ -6,6 +6,8 @@ const HINTS = [
   { key: "esc", label: "interrupt" },
   { key: "^t", label: "tasks" },
   { key: "^g", label: "metrics" },
+  { key: "^r", label: "prose" },
+  { key: "^d", label: "experiments" },
 ];
 
 export const KeyHintRule = memo(function KeyHintRule() {
