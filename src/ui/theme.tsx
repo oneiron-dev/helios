@@ -20,7 +20,43 @@ export const G = {
   dotDim: "◇",
   rule: "━",
   dash: "╌",
+  check: "✓",
+  cross: "✗",
+  progress: "█",
+  progressEmpty: "░",
+  branch: "├",
+  branchEnd: "└",
+  pipe: "│",
+  pause: "⏸",
+  arrowUp: "↑",
+  arrowDown: "↓",
 };
+
+// ─── Status Styling (Single Source of Truth) ─────────
+export const STATUS_STYLE: Record<string, { color: string; glyph: string; fallback: string }> = {
+  accepted:  { color: C.success, glyph: "✓", fallback: "[OK]" },
+  rejected:  { color: C.error,   glyph: "✗", fallback: "[X]"  },
+  screening: { color: C.dim,     glyph: "◇", fallback: "[~]"  },
+  running:   { color: C.primary, glyph: "▸", fallback: "[>]"  },
+  pending:   { color: C.dim,     glyph: "╌", fallback: "[-]"  },
+  done:      { color: C.success, glyph: "✓", fallback: "[OK]" },
+  error:     { color: C.error,   glyph: "!", fallback: "[!]"  },
+  stalled:   { color: "magenta", glyph: "⏸", fallback: "[||]" },
+  keep:      { color: C.success, glyph: "↑", fallback: "[^]"  },
+  revert:    { color: C.error,   glyph: "↓", fallback: "[v]"  },
+};
+
+/** Resolve glyph based on fallback mode (HELIOS_ASCII=1 or config) */
+export function statusGlyph(status: string): string {
+  const s = STATUS_STYLE[status];
+  if (!s) return "?";
+  return process.env.HELIOS_ASCII === "1" ? s.fallback : s.glyph;
+}
+
+/** Get the color for a status */
+export function statusColor(status: string): string {
+  return STATUS_STYLE[status]?.color ?? C.dim;
+}
 
 // ─── Metric Colors ───────────────────────────────────
 export const METRIC_COLORS = [
@@ -58,4 +94,3 @@ export function HRule({ dim = false }: { dim?: boolean }) {
     </Box>
   );
 }
-

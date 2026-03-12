@@ -1,5 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 
@@ -31,6 +30,16 @@ export interface ProjectConfig {
   };
   /** Working directory for experiments (relative to project root) */
   experimentDir?: string;
+  /** Path to .prose/runs directory (default: ".prose/runs") */
+  proseDir?: string;
+  /** Experiment adapter name: "arena-sweep" | "autoresearch-tsv" */
+  experimentAdapter?: string;
+  /** Adapter-specific configuration passed to the adapter constructor */
+  experimentConfig?: Record<string, unknown>;
+  /** How long (ms) before a prose run is considered stalled (default: 300000 = 5 min) */
+  stalledThresholdMs?: number;
+  /** Use ASCII fallback glyphs for rough terminals */
+  unicodeFallback?: boolean;
 }
 
 // ---------------------------------------------------------------------------

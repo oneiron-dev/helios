@@ -12,6 +12,8 @@ import { C, G, HRule } from "./theme.js";
 import { KeyHintRule } from "./components/key-hint-rule.js";
 import { TaskOverlay } from "./overlays/task-overlay.js";
 import { MetricsOverlay } from "./overlays/metrics-overlay.js";
+import { ProseOverlay } from "./overlays/prose-overlay.js";
+import { ExperimentsOverlay } from "./overlays/experiments-overlay.js";
 import type { MonitorConfig } from "../core/monitor.js";
 import type { MouseEvent } from "./mouse-filter.js";
 import type { StickyNote } from "../core/stickies.js";
@@ -53,7 +55,7 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
   const [tasks, setTasks] = useState<TaskInfo[]>([]);
   const [metricData, setMetricData] = useState<Map<string, number[]>>(new Map());
   const [stickyNotes, setStickyNotes] = useState<StickyNote[]>([]);
-  const [activeOverlay, setActiveOverlay] = useState<"none" | "tasks" | "metrics">("none");
+  const [activeOverlay, setActiveOverlay] = useState<"none" | "tasks" | "metrics" | "prose" | "experiments">("none");
   const [resourceData, setResourceData] = useState<Map<string, import("../metrics/resources.js").MachineResources>>(new Map());
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
 
@@ -183,6 +185,14 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
       setActiveOverlay((prev) => prev === "metrics" ? "none" : "metrics");
       return;
     }
+    if (key.ctrl && input === "r") {
+      setActiveOverlay((prev) => prev === "prose" ? "none" : "prose");
+      return;
+    }
+    if (key.ctrl && input === "d") {
+      setActiveOverlay((prev) => prev === "experiments" ? "none" : "experiments");
+      return;
+    }
 
     // Esc: close overlay first, then interrupt stream
     if (key.escape) {
@@ -253,6 +263,9 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           orchestrator, addMessage, updateMessage, setMessages, messages: messagesRef.current, setIsStreaming,
           connectionPool, metricStore, metricCollector, memoryStore,
           stickyManager, setStickyNotes, executor, skillRegistry: runtime.skillRegistry,
+          proseWatcher: runtime.proseWatcher,
+          experimentAdapter: runtime.experimentAdapter,
+          setActiveOverlay,
           restoreMessages: (msgs) =>
             msgs.map((m) => ({
               id: ++messageIdCounter,
@@ -437,6 +450,32 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
         <MetricsOverlay
           metricData={metricData}
           metricStore={metricStore}
+          width={width}
+          height={height}
+          onClose={() => setActiveOverlay("none")}
+        />
+      </Box>
+    );
+  }
+
+  if (activeOverlay === "prose" && runtime.proseWatcher) {
+    return (
+      <Box flexDirection="column" height={height} width={width}>
+        <ProseOverlay
+          proseWatcher={runtime.proseWatcher}
+          width={width}
+          height={height}
+          onClose={() => setActiveOverlay("none")}
+        />
+      </Box>
+    );
+  }
+
+  if (activeOverlay === "experiments" && runtime.experimentAdapter) {
+    return (
+      <Box flexDirection="column" height={height} width={width}>
+        <ExperimentsOverlay
+          adapter={runtime.experimentAdapter}
           width={width}
           height={height}
           onClose={() => setActiveOverlay("none")}

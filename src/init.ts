@@ -55,10 +55,15 @@ import { seedBundledSkills } from "./skills/loader.js";
 import { createExperimentBranchTools } from "./tools/experiment-branch.js";
 import { createEnvSnapshotTool } from "./tools/env-snapshot.js";
 import { createSweepTool } from "./tools/sweep.js";
-import { findProjectConfig } from "./config/project.js";
+import { resolve, join } from "node:path";
+import { findProjectConfig, findProjectRoot } from "./config/project.js";
 import { ResourceCollector } from "./metrics/resources.js";
 import { Notifier } from "./notifications/index.js";
 import { ExperimentBrancher } from "./experiments/branching.js";
+import { ProseWatcher } from "./prose/watcher.js";
+import type { ProseRunConfig } from "./prose/types.js";
+import { createAdapter } from "./experiments/registry.js";
+import type { ExperimentAdapter } from "./experiments/types.js";
 
 const SYSTEM_PROMPT = `You are Helios, an autonomous ML research agent. You help researchers design, run, and monitor machine learning experiments on local and remote machines.
 
@@ -273,6 +278,8 @@ export interface HeliosRuntime {
   openaiOAuth: OpenAIOAuth;
   projectConfig: ReturnType<typeof findProjectConfig>;
   agentName?: string;
+  proseWatcher?: ProseWatcher;
+  experimentAdapter?: ExperimentAdapter;
   cleanup: () => void;
 }
 
@@ -444,6 +451,40 @@ export async function createRuntime(options: RuntimeOptions = {}): Promise<Helio
     process.stderr.write(`[helios] Failed to authenticate ${initialProvider} provider: ${formatError(err)}\n`);
   }
 
+  // Prose watcher (optional — only if .prose/runs exists or configured)
+  let proseWatcher: ProseWatcher | undefined;
+  const resolvedRoot = findProjectRoot() ?? process.cwd();
+  const proseRunsDir = projectConfig?.proseDir
+    ? resolve(resolvedRoot, projectConfig.proseDir)
+    : join(resolvedRoot, ".prose", "runs");
+
+  const proseConfig: ProseRunConfig = {
+    runsDir: proseRunsDir,
+    pollIntervalMs: 3000,
+    stalledThresholdMs: projectConfig?.stalledThresholdMs ?? 300_000,
+  };
+  proseWatcher = new ProseWatcher(proseConfig);
+  proseWatcher.start();
+
+  // Experiment adapter (optional — auto-detects from project structure)
+  let experimentAdapter: ExperimentAdapter | undefined;
+  try {
+    const adapter = await createAdapter(
+      {
+        experimentAdapter: projectConfig?.experimentAdapter,
+        experimentConfig: projectConfig?.experimentConfig,
+      },
+      resolvedRoot,
+    );
+    if (adapter) {
+      experimentAdapter = adapter;
+      await adapter.load();
+      adapter.startPolling(5000);
+    }
+  } catch (err) {
+    process.stderr.write(`[helios] Experiment adapter init failed: ${formatError(err)}\n`);
+  }
+
   return {
     orchestrator: orch,
     sleepManager: sleepMgr,
@@ -462,10 +503,14 @@ export async function createRuntime(options: RuntimeOptions = {}): Promise<Helio
     openaiOAuth,
     projectConfig,
     agentName: agentId || hubConfig?.agentName,
+    proseWatcher,
+    experimentAdapter,
     cleanup: () => {
       monitorMgr.stop();
       triggerScheduler.stopAll();
       connPool.disconnectAll();
+      proseWatcher?.stop();
+      experimentAdapter?.stopPolling();
     },
   };
 }
