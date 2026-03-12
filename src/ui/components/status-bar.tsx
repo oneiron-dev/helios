@@ -5,6 +5,8 @@ import { formatDuration, truncate } from "../format.js";
 import type { Orchestrator } from "../../core/orchestrator.js";
 import type { SleepManager } from "../../scheduler/sleep-manager.js";
 import type { MonitorManager } from "../../core/monitor.js";
+import type { ProseRun } from "../../prose/types.js";
+import type { ExperimentSummary } from "../../experiments/types.js";
 
 interface StatusBarProps {
   orchestrator: Orchestrator;
@@ -12,11 +14,13 @@ interface StatusBarProps {
   monitorManager?: MonitorManager;
   isStreaming?: boolean;
   streamingStartedAt?: number | null;
+  proseRuns?: ProseRun[];
+  experimentSummary?: ExperimentSummary | null;
 }
 
 const SLEEP_FRAMES = ["◇", "◆", "◇", "◇"];
 
-export function StatusBar({ orchestrator, sleepManager, monitorManager, isStreaming, streamingStartedAt }: StatusBarProps) {
+export function StatusBar({ orchestrator, sleepManager, monitorManager, isStreaming, streamingStartedAt, proseRuns, experimentSummary }: StatusBarProps) {
   const state = orchestrator.currentState;
   const provider = orchestrator.currentProvider;
   const model = orchestrator.currentModel;
@@ -125,6 +129,28 @@ export function StatusBar({ orchestrator, sleepManager, monitorManager, isStream
           <Text color={C.success}>⟳ </Text>
           <Text color={C.dim}>
             monitoring ({Math.round(monitorManager.currentConfig.intervalMs / 60_000)}m)
+          </Text>
+        </>
+      )}
+
+      {proseRuns && proseRuns.length > 0 && (() => {
+        const active = proseRuns.filter(r => r.status === "running").length;
+        return (
+          <>
+            <Text color={C.dim}>{" "}{G.dash}{" "}</Text>
+            <Text color={active > 0 ? C.primary : C.dim}>
+              {G.active} prose {active}/{proseRuns.length}
+            </Text>
+          </>
+        );
+      })()}
+
+      {experimentSummary && experimentSummary.totalCount > 0 && (
+        <>
+          <Text color={C.dim}>{" "}{G.dash}{" "}</Text>
+          <Text color={experimentSummary.activeCount > 0 ? C.primary : C.dim}>
+            {G.dot} exp {experimentSummary.activeCount}/{experimentSummary.totalCount}
+            {experimentSummary.bestScore !== null ? ` best:${experimentSummary.bestScore.toPrecision(4)}` : ""}
           </Text>
         </>
       )}

@@ -46,11 +46,22 @@ export const STATUS_STYLE: Record<string, { color: string; glyph: string; fallba
   revert:    { color: C.error,   glyph: "↓", fallback: "[v]"  },
 };
 
+let _unicodeFallback = false;
+
+export function setUnicodeFallback(v: boolean): void {
+  _unicodeFallback = v;
+}
+
+/** General-purpose fallback: returns ascii when fallback mode is active. */
+export function glyph(unicode: string, ascii: string): string {
+  return (_unicodeFallback || process.env.HELIOS_ASCII === "1") ? ascii : unicode;
+}
+
 /** Resolve glyph based on fallback mode (HELIOS_ASCII=1 or config) */
 export function statusGlyph(status: string): string {
   const s = STATUS_STYLE[status];
   if (!s) return "?";
-  return process.env.HELIOS_ASCII === "1" ? s.fallback : s.glyph;
+  return (_unicodeFallback || process.env.HELIOS_ASCII === "1") ? s.fallback : s.glyph;
 }
 
 /** Get the color for a status */
