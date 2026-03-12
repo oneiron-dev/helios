@@ -9,7 +9,10 @@ import type { StickyManager, StickyNote } from "../core/stickies.js";
 import type { ReasoningEffort } from "../providers/types.js";
 import type { SessionSummary } from "../store/session-store.js";
 import type { Message } from "./types.js";
-import { formatError, formatMetricValue } from "./format.js";
+import type { ProseWatcher } from "../prose/watcher.js";
+import type { ExperimentAdapter } from "../experiments/types.js";
+import { formatError, formatMetricValue, formatDuration } from "./format.js";
+import { statusGlyph } from "./theme.js";
 import { sparkline } from "./panels/metrics-dashboard.js";
 import { ClaudeProvider } from "../providers/claude/provider.js";
 import { savePreferences } from "../store/preferences.js";
@@ -50,6 +53,9 @@ export interface CommandContext {
   stickyManager?: StickyManager;
   setStickyNotes?: React.Dispatch<React.SetStateAction<StickyNote[]>>;
   executor?: RemoteExecutor;
+  proseWatcher?: ProseWatcher;
+  experimentAdapter?: ExperimentAdapter;
+  setActiveOverlay?: (overlay: "none" | "tasks" | "metrics" | "prose" | "experiments") => void;
   /** Build Message[] from stored messages (needs access to the id counter). */
   restoreMessages: (messages: Array<{ role: string; content: string }>) => Message[];
 }
@@ -78,6 +84,10 @@ export const COMMANDS: SlashCommand[] = [
   { name: "stickies", args: "[rm <num>]", description: "List sticky notes, or remove one by number" },
   { name: "memory", args: "[path]", description: "Show the memory tree (virtual filesystem)" },
   { name: "status", description: "Show provider, model, state, and cost" },
+  { name: "prose", args: "runs", description: "List recent Prose runs" },
+  { name: "prose", args: "tail <run-id>", description: "Open run state overlay" },
+  { name: "experiments", description: "Open experiment dashboard" },
+  { name: "experiments", args: "best", description: "Show the best experiment" },
   { name: "clear", description: "Clear conversation history" },
   { name: "quit", description: "Exit Helios" },
 ];
@@ -104,6 +114,8 @@ export function formatHelpText(): string {
     "  ←→         Move cursor",
     "  Ctrl+T     Task output overlay",
     "  Ctrl+G     Metrics overlay",
+    "  Ctrl+R     Prose runs overlay",
+    "  Ctrl+D     Experiments overlay",
     "  Escape     Interrupt / close overlay",
     "  Ctrl+A/E   Start / end of line",
     "  Ctrl+W     Delete word backward",
@@ -169,6 +181,12 @@ export async function handleSlashCommand(
       break;
     case "hub":
       cmdHub(args, ctx);
+      break;
+    case "prose":
+      cmdProse(args, ctx);
+      break;
+    case "experiments":
+      cmdExperiments(args, ctx);
       break;
     case "clear":
       ctx.setMessages([]);
@@ -654,6 +672,83 @@ function cmdHub(args: string[], ctx: CommandContext): void {
     "system",
     "Usage: /hub [connect <url> [name] | disconnect | status]",
   );
+}
+
+function cmdProse(args: string[], ctx: CommandContext): void {
+  const { addMessage, proseWatcher, setActiveOverlay } = ctx;
+
+  if (!proseWatcher) {
+    addMessage("system", "Prose watcher not available. No .prose/runs/ directory found.");
+    return;
+  }
+
+  const subCmd = args[0];
+
+  if (!subCmd || subCmd === "runs") {
+    const runs = proseWatcher.getRuns();
+    if (runs.length === 0) {
+      addMessage("system", "No Prose runs found.\nUse `prose run <file.prose>` to start one.");
+      return;
+    }
+    const lines = runs.map((r) => {
+      const elapsed = formatDuration(Date.now() - r.startedAt);
+      const steps = `${r.steps.filter((s) => s.status === "complete").length}/${r.steps.length}`;
+      return `  ${statusGlyph(r.status)} ${r.id.slice(0, 24).padEnd(24)} ${r.status.padEnd(8)} ${steps.padEnd(5)} ${elapsed.padEnd(8)} ${r.programName}`;
+    });
+    addMessage("system", `Prose runs:\n  ${"ID".padEnd(24)} ${"STATUS".padEnd(8)} ${"STEPS".padEnd(5)} ${"TIME".padEnd(8)} PROGRAM\n${lines.join("\n")}`);
+    return;
+  }
+
+  if (subCmd === "tail") {
+    const runId = args[1];
+    if (!runId) {
+      addMessage("system", "Usage: /prose tail <run-id>");
+      return;
+    }
+    const run = proseWatcher.getRun(runId);
+    if (!run) {
+      addMessage("system", `Run "${runId}" not found.`);
+      return;
+    }
+    setActiveOverlay?.("prose");
+    return;
+  }
+
+  addMessage("system", "Usage: /prose [runs | tail <run-id>]");
+}
+
+function cmdExperiments(args: string[], ctx: CommandContext): void {
+  const { addMessage, experimentAdapter, setActiveOverlay } = ctx;
+
+  if (!experimentAdapter) {
+    addMessage("system", "No experiment adapter detected.\nConfigure in helios.json or place artifacts in a recognized directory.");
+    return;
+  }
+
+  const subCmd = args[0];
+
+  if (!subCmd) {
+    setActiveOverlay?.("experiments");
+    return;
+  }
+
+  if (subCmd === "best") {
+    const summary = experimentAdapter.getSummary();
+    if (summary.bestScore === null) {
+      addMessage("system", "No experiments with scores yet.");
+      return;
+    }
+    const lines = [
+      `${summary.label}`,
+      ...summary.stats.map((s) => `  ${s.key}: ${s.value}`),
+      `  best score: ${summary.bestScore.toFixed(4)}`,
+      `  total: ${summary.totalCount}  active: ${summary.activeCount}`,
+    ];
+    addMessage("system", lines.join("\n"));
+    return;
+  }
+
+  addMessage("system", "Usage: /experiments [best]");
 }
 
 async function cmdWriteup(ctx: CommandContext): Promise<void> {
