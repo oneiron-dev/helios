@@ -155,9 +155,9 @@ describe("ArenaSweepAdapter", () => {
   test("removes update listeners on unsubscribe", async () => {
     const adapter = new ArenaSweepAdapter(TEST_DIR);
     let tick = 0;
-    (adapter as any).load = async function() {
+    adapter.load = async () => {
       tick += 1;
-      this.experiments = [
+      const experiments = [
         {
           id: `candidate_${tick}`,
           status: "running",
@@ -168,7 +168,8 @@ describe("ArenaSweepAdapter", () => {
           metadata: {},
         },
       ];
-      return this.experiments;
+      Reflect.set(adapter, "experiments", experiments);
+      return experiments;
     };
 
     let updates = 0;
