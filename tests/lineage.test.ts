@@ -160,28 +160,28 @@ describe("flattenForest", () => {
 
 describe("computeConnectors", () => {
   it("returns empty for depth 0", () => {
-    expect(computeConnectors(0, true, [])).toBe("");
+    expect(computeConnectors(0, [])).toBe("");
   });
 
   it("uses branchEnd for last child at depth 1", () => {
-    const result = computeConnectors(1, true, [false]);
+    const result = computeConnectors(1, [false]);
     expect(result).toContain("└");
   });
 
   it("uses branch for non-last child at depth 1", () => {
-    const result = computeConnectors(1, false, [true]);
+    const result = computeConnectors(1, [true]);
     expect(result).toContain("├");
   });
 
   it("uses pipe prefix for depth 2+ with ancestor continuation", () => {
     // ancestorHasMore: [true (level 0 has more siblings), false (current is last)]
-    const result = computeConnectors(2, true, [true, false]);
+    const result = computeConnectors(2, [true, false]);
     expect(result).toContain("│");
     expect(result).toContain("└");
   });
 
   it("uses spaces for depth 2+ without ancestor continuation", () => {
-    const result = computeConnectors(2, true, [false, false]);
+    const result = computeConnectors(2, [false, false]);
     expect(result.startsWith("  ")).toBe(true);
     expect(result).toContain("└");
   });

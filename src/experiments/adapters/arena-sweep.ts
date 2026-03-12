@@ -235,41 +235,35 @@ export class ArenaSweepAdapter implements ExperimentAdapter {
   }
 
   getLineage(): LineageInfo[] {
-    const result: LineageInfo[] = [];
-    const idSet = new Set(this.experiments.map((e) => e.id));
+    // Index experiments by ID for O(1) parent chain lookups
+    const byId = new Map(this.experiments.map((e) => [e.id, e]));
 
-    for (const exp of this.experiments) {
-      const sourceName = exp.metadata.source_name as string | undefined;
-      const source = exp.metadata.source as string | undefined;
-      const parentRef = sourceName ?? source;
+    return this.experiments.map((exp) => {
+      const parentRef = (exp.metadata.source_name ?? exp.metadata.source) as string | undefined;
+      const primaryParentId = parentRef && parentRef !== exp.id && byId.has(parentRef)
+        ? parentRef
+        : undefined;
 
-      let primaryParentId: string | undefined;
+      // Walk parent chain to compute generation depth
       let generation = 0;
-
-      if (parentRef && parentRef !== exp.id && idSet.has(parentRef)) {
-        primaryParentId = parentRef;
-        // Walk parent chain to compute generation
-        let cur = parentRef;
-        while (cur) {
-          generation++;
-          const parent = this.experiments.find((e) => e.id === cur);
-          const nextRef = (parent?.metadata.source_name ?? parent?.metadata.source) as string | undefined;
-          if (!nextRef || nextRef === cur || !idSet.has(nextRef)) break;
-          cur = nextRef;
-        }
+      let cur = primaryParentId;
+      while (cur) {
+        generation++;
+        const parent = byId.get(cur);
+        const nextRef = (parent?.metadata.source_name ?? parent?.metadata.source) as string | undefined;
+        if (!nextRef || nextRef === cur || !byId.has(nextRef)) break;
+        cur = nextRef;
       }
 
       const notes = exp.metadata.notes as string | undefined;
-      result.push({
+      return {
         experimentId: exp.id,
         primaryParentId,
         familyId: parentRef ?? exp.id,
         generation,
         branchLabel: notes ? notes.slice(0, 50) : undefined,
-      });
-    }
-
-    return result;
+      };
+    });
   }
 
   startPolling(intervalMs = 5000): void {
