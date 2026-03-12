@@ -7,6 +7,7 @@ import type {
   ExperimentDetail,
   ColumnDef,
   OperatorAction,
+  LineageInfo,
 } from "../types.js";
 
 interface CandidateResult {
@@ -233,6 +234,44 @@ export class ArenaSweepAdapter implements ExperimentAdapter {
     ];
   }
 
+  getLineage(): LineageInfo[] {
+    const result: LineageInfo[] = [];
+    const idSet = new Set(this.experiments.map((e) => e.id));
+
+    for (const exp of this.experiments) {
+      const sourceName = exp.metadata.source_name as string | undefined;
+      const source = exp.metadata.source as string | undefined;
+      const parentRef = sourceName ?? source;
+
+      let primaryParentId: string | undefined;
+      let generation = 0;
+
+      if (parentRef && parentRef !== exp.id && idSet.has(parentRef)) {
+        primaryParentId = parentRef;
+        // Walk parent chain to compute generation
+        let cur = parentRef;
+        while (cur) {
+          generation++;
+          const parent = this.experiments.find((e) => e.id === cur);
+          const nextRef = (parent?.metadata.source_name ?? parent?.metadata.source) as string | undefined;
+          if (!nextRef || nextRef === cur || !idSet.has(nextRef)) break;
+          cur = nextRef;
+        }
+      }
+
+      const notes = exp.metadata.notes as string | undefined;
+      result.push({
+        experimentId: exp.id,
+        primaryParentId,
+        familyId: parentRef ?? exp.id,
+        generation,
+        branchLabel: notes ? notes.slice(0, 50) : undefined,
+      });
+    }
+
+    return result;
+  }
+
   startPolling(intervalMs = 5000): void {
     if (this.timer) return;
     this.timer = setInterval(async () => {
@@ -256,6 +295,20 @@ export class ArenaSweepAdapter implements ExperimentAdapter {
   }
 
   // ─── Private helpers ─────────────────────────────────
+
+  private static readGenomeMeta(dir: string): { source_name?: string; source?: string; notes?: string } {
+    try {
+      const genomePath = join(dir, "genome.json");
+      if (!existsSync(genomePath)) return {};
+      const genome = JSON.parse(readFileSync(genomePath, "utf-8")) as Record<string, unknown>;
+      const meta = (genome.metadata ?? genome) as Record<string, unknown>;
+      return {
+        source_name: typeof meta.source_name === "string" ? meta.source_name : undefined,
+        source: typeof meta.source === "string" ? meta.source : undefined,
+        notes: typeof meta.notes === "string" ? meta.notes : undefined,
+      };
+    } catch { return {}; }
+  }
 
   private static resolveStatus(
     arenaStatus: string,
@@ -494,6 +547,10 @@ export class ArenaSweepAdapter implements ExperimentAdapter {
       elapsed = new Date(latestResult.finished_at).getTime() - new Date(latestResult.started_at).getTime();
     }
 
+    // Read genome.json for lineage metadata
+    const candidateDir = latestResult.candidate_dir;
+    const genomeMeta = candidateDir ? ArenaSweepAdapter.readGenomeMeta(candidateDir) : {};
+
     return {
       id,
       status,
@@ -509,13 +566,16 @@ export class ArenaSweepAdapter implements ExperimentAdapter {
         kind: candidateInfo.kind,
         artifactsDir: this.artifactsDir,
         runId: manifest.run_id,
-        candidateDir: latestResult.candidate_dir,
+        candidateDir,
         promotable: latestResult.promotable,
         stageResults: latestResult.result,
         elapsed,
         heldout_body_diff: arenaResult?.heldout_body_diff,
         shadow_body_diff: arenaResult?.shadow_body_diff,
         java_smoke_passed: arenaResult?.java_smoke_passed,
+        source_name: genomeMeta.source_name,
+        source: genomeMeta.source,
+        notes: genomeMeta.notes,
       },
     };
   }
@@ -548,6 +608,7 @@ export class ArenaSweepAdapter implements ExperimentAdapter {
                   if (typeof arenaResult.java_smoke_passed === "number") metrics.java_smoke_passed = arenaResult.java_smoke_passed;
                 }
 
+                const genomeMeta = ArenaSweepAdapter.readGenomeMeta(entryPath);
                 experiments.push({
                   id: result.candidate_id ?? entry,
                   status,
@@ -566,6 +627,9 @@ export class ArenaSweepAdapter implements ExperimentAdapter {
                     elapsed: result.started_at && result.finished_at
                       ? new Date(result.finished_at).getTime() - new Date(result.started_at).getTime()
                       : undefined,
+                    source_name: genomeMeta.source_name,
+                    source: genomeMeta.source,
+                    notes: genomeMeta.notes,
                   },
                 });
                 break; // Use highest stage found

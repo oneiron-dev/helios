@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Box, Text, useInput } from "ink";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { C, G, statusGlyph, statusColor } from "../theme.js";
@@ -6,6 +6,7 @@ import { OverlayHeader } from "../components/overlay-header.js";
 import { sparkline } from "../panels/metrics-dashboard.js";
 import { executeAction } from "../../experiments/action-executor.js";
 import { formatError } from "../format.js";
+import { buildForest, flattenForest, type FlatTreeRow } from "../../experiments/lineage.js";
 import type { ExperimentAdapter, Experiment, ColumnDef, OperatorAction } from "../../experiments/types.js";
 import type { RemoteExecutor } from "../../remote/executor.js";
 
@@ -17,9 +18,12 @@ interface ExperimentsOverlayProps {
   onClose: () => void;
 }
 
+type ViewMode = "table" | "loom";
+
 export function ExperimentsOverlay({ adapter, executor, width, height, onClose }: ExperimentsOverlayProps) {
   const [experiments, setExperiments] = useState<Experiment[]>([]);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [showDetail, setShowDetail] = useState(false);
   const [pendingAction, setPendingAction] = useState<{
     action: OperatorAction;
@@ -40,7 +44,18 @@ export function ExperimentsOverlay({ adapter, executor, width, height, onClose }
     return () => adapter.stopPolling();
   }, [adapter, refresh]);
 
-  const selected = experiments[selectedIndex] ?? null;
+  // Compute loom tree
+  const lineage = useMemo(() => adapter.getLineage?.() ?? [], [adapter, experiments]);
+  const flatRows = useMemo(() => {
+    const roots = buildForest(experiments, lineage.length > 0 ? lineage : undefined);
+    return flattenForest(roots);
+  }, [experiments, lineage]);
+
+  // Derive display list and selection index from selectedId
+  const displayList = viewMode === "loom" ? flatRows.map((r) => r.experiment) : experiments;
+  const selectedIndex = selectedId ? displayList.findIndex((e) => e.id === selectedId) : 0;
+  const clampedIndex = Math.max(0, Math.min(selectedIndex >= 0 ? selectedIndex : 0, displayList.length - 1));
+  const selected = displayList[clampedIndex] ?? null;
 
   useInput((input, key) => {
     // Confirmation mode: consume all input
@@ -62,6 +77,10 @@ export function ExperimentsOverlay({ adapter, executor, width, height, onClose }
       return;
     }
 
+    if (key.tab) {
+      setViewMode((prev) => (prev === "table" ? "loom" : "table"));
+      return;
+    }
     if (key.escape) {
       if (showDetail) {
         setShowDetail(false);
@@ -70,11 +89,13 @@ export function ExperimentsOverlay({ adapter, executor, width, height, onClose }
       onClose();
       return;
     }
-    if (key.upArrow && experiments.length > 0) {
-      setSelectedIndex((i) => Math.max(0, i - 1));
+    if (key.upArrow && displayList.length > 0) {
+      const newIndex = Math.max(0, clampedIndex - 1);
+      setSelectedId(displayList[newIndex]?.id ?? null);
     }
-    if (key.downArrow && experiments.length > 0) {
-      setSelectedIndex((i) => Math.min(experiments.length - 1, i + 1));
+    if (key.downArrow && displayList.length > 0) {
+      const newIndex = Math.min(displayList.length - 1, clampedIndex + 1);
+      setSelectedId(displayList[newIndex]?.id ?? null);
     }
     if (key.return) {
       setShowDetail((prev) => !prev);
@@ -95,11 +116,12 @@ export function ExperimentsOverlay({ adapter, executor, width, height, onClose }
     }
   });
 
+  // Clamp selection when list changes
   useEffect(() => {
-    if (selectedIndex >= experiments.length && experiments.length > 0) {
-      setSelectedIndex(experiments.length - 1);
+    if (displayList.length > 0 && clampedIndex >= displayList.length) {
+      setSelectedId(displayList[displayList.length - 1]?.id ?? null);
     }
-  }, [experiments.length, selectedIndex]);
+  }, [displayList.length, clampedIndex]);
 
   // Clear action message after 5 seconds
   useEffect(() => {
@@ -117,7 +139,7 @@ export function ExperimentsOverlay({ adapter, executor, width, height, onClose }
       <OverlayHeader
         width={width}
         title="EXPERIMENTS"
-        hints="ESC close  ↑↓ select  Enter detail  a action"
+        hints="ESC close  ↑↓ select  Enter detail  a action  Tab table/loom"
       />
 
       {/* Summary line */}
@@ -155,16 +177,28 @@ export function ExperimentsOverlay({ adapter, executor, width, height, onClose }
 
       {/* Main content */}
       <Box flexGrow={1} flexShrink={1} height={bodyHeight}>
-        <ExperimentsBody
-          experiments={experiments}
-          showDetail={showDetail}
-          selected={selected}
-          adapter={adapter}
-          columns={columns}
-          selectedIndex={selectedIndex}
-          scrollRef={scrollRef}
-          width={width}
-        />
+        {viewMode === "table" ? (
+          <ExperimentsBody
+            experiments={experiments}
+            showDetail={showDetail}
+            selected={selected}
+            adapter={adapter}
+            columns={columns}
+            selectedIndex={clampedIndex}
+            scrollRef={scrollRef}
+            width={width}
+          />
+        ) : (
+          <LoomBody
+            flatRows={flatRows}
+            showDetail={showDetail}
+            selected={selected}
+            adapter={adapter}
+            selectedIndex={clampedIndex}
+            scrollRef={scrollRef}
+            width={width}
+          />
+        )}
       </Box>
 
       {/* Confirmation bar / action message */}
@@ -311,6 +345,71 @@ function DetailView({
         ))}
       </Box>
     </ScrollView>
+  );
+}
+
+function LoomBody({
+  flatRows,
+  showDetail,
+  selected,
+  adapter,
+  selectedIndex,
+  scrollRef,
+  width,
+}: {
+  flatRows: FlatTreeRow[];
+  showDetail: boolean;
+  selected: Experiment | null;
+  adapter: ExperimentAdapter;
+  selectedIndex: number;
+  scrollRef: React.RefObject<ScrollViewRef | null>;
+  width: number;
+}) {
+  if (flatRows.length === 0) {
+    return (
+      <Box flexGrow={1} alignItems="center" justifyContent="center">
+        <Text color={C.dim}>no lineage data</Text>
+      </Box>
+    );
+  }
+
+  if (showDetail && selected) {
+    return <DetailView adapter={adapter} experiment={selected} width={width} />;
+  }
+
+  return (
+    <ScrollView ref={scrollRef}>
+      <Box flexDirection="column" paddingX={1}>
+        {flatRows.map((row, i) => (
+          <LoomRow key={row.experiment.id} row={row} isSelected={i === selectedIndex} width={width} />
+        ))}
+      </Box>
+    </ScrollView>
+  );
+}
+
+function LoomRow({ row, isSelected, width }: {
+  row: FlatTreeRow;
+  isSelected: boolean;
+  width: number;
+}) {
+  const { experiment: exp, connectors } = row;
+  const glyph = statusGlyph(exp.status);
+  const color = statusColor(exp.status);
+  const score = exp.compositeScore !== null ? exp.compositeScore.toFixed(2) : "";
+  const label = exp.branchLabel ?? exp.description;
+  const idWidth = Math.min(24, Math.max(12, Math.floor(width * 0.25)));
+  const id = exp.id.length > idWidth ? exp.id.slice(0, idWidth - 1) + "\u2026" : exp.id.padEnd(idWidth);
+
+  return (
+    <Box>
+      <Text color={C.dim}>{connectors}</Text>
+      <Text color={isSelected ? C.bright : color} bold={isSelected} inverse={isSelected}>
+        {glyph} {id}
+      </Text>
+      {score && <Text color={isSelected ? C.bright : C.primary}> {score}</Text>}
+      <Text color={C.dim}> {label}</Text>
+    </Box>
   );
 }
 

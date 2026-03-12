@@ -15,6 +15,11 @@ export interface Experiment {
   startedAt?: number;
   finishedAt?: number;
   parentId?: string;
+  primaryParentId?: string;
+  parentIds?: string[];
+  familyId?: string;
+  generation?: number;
+  branchLabel?: string;
   metadata: Record<string, unknown>;
 }
 
@@ -47,6 +52,15 @@ export interface OperatorAction {
   buildExec(experiment: Experiment): ExecSpec;
 }
 
+export interface LineageInfo {
+  experimentId: string;
+  primaryParentId?: string;
+  parentIds?: string[];
+  familyId?: string;
+  generation: number;
+  branchLabel?: string;
+}
+
 export interface ExperimentAdapter {
   id: string;
   name: string;
@@ -55,6 +69,7 @@ export interface ExperimentAdapter {
   getDetail(experimentId: string): ExperimentDetail;
   getColumns(width: number): ColumnDef[];
   getActions(): OperatorAction[];
+  getLineage?(): LineageInfo[];
   startPolling(intervalMs?: number): void;
   stopPolling(): void;
   onUpdate(callback: () => void): void;
