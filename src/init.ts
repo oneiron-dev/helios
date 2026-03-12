@@ -279,6 +279,7 @@ export interface HeliosRuntime {
   projectConfig: ReturnType<typeof findProjectConfig>;
   agentName?: string;
   proseWatcher?: ProseWatcher;
+  proseRunConfig?: ProseRunConfig;
   experimentAdapter?: ExperimentAdapter;
   cleanup: () => void;
 }
@@ -504,6 +505,7 @@ export async function createRuntime(options: RuntimeOptions = {}): Promise<Helio
     projectConfig,
     agentName: agentId || hubConfig?.agentName,
     proseWatcher,
+    proseRunConfig: proseConfig,
     experimentAdapter,
     cleanup: () => {
       monitorMgr.stop();

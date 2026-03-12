@@ -20,4 +20,6 @@ export interface TaskInfo {
   machineId: string;
   pid?: number;
   startedAt: number;
+  groupId?: string;
+  groupLabel?: string;
 }

@@ -26,7 +26,12 @@ export class RemoteExecutor {
     machineId: string,
     command: string,
     logPath?: string,
-    opts?: { metricNames?: string[]; metricPatterns?: Record<string, string> },
+    opts?: {
+      metricNames?: string[];
+      metricPatterns?: Record<string, string>;
+      groupId?: string;
+      groupLabel?: string;
+    },
   ): Promise<BackgroundProcess> {
     const result = await this.pool.execBackground(
       machineId,
@@ -42,6 +47,8 @@ export class RemoteExecutor {
       startedAt: Date.now(),
       metricNames: opts?.metricNames,
       metricPatterns: opts?.metricPatterns,
+      groupId: opts?.groupId,
+      groupLabel: opts?.groupLabel,
     };
 
     const key = `${machineId}:${result.pid}`;

@@ -4,19 +4,28 @@ import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { C, G, statusGlyph, statusColor } from "../theme.js";
 import { OverlayHeader } from "../components/overlay-header.js";
 import { sparkline } from "../panels/metrics-dashboard.js";
-import type { ExperimentAdapter, Experiment, ColumnDef } from "../../experiments/types.js";
+import { executeAction } from "../../experiments/action-executor.js";
+import { formatError } from "../format.js";
+import type { ExperimentAdapter, Experiment, ColumnDef, OperatorAction } from "../../experiments/types.js";
+import type { RemoteExecutor } from "../../remote/executor.js";
 
 interface ExperimentsOverlayProps {
   adapter: ExperimentAdapter;
+  executor?: RemoteExecutor;
   width: number;
   height: number;
   onClose: () => void;
 }
 
-export function ExperimentsOverlay({ adapter, width, height, onClose }: ExperimentsOverlayProps) {
+export function ExperimentsOverlay({ adapter, executor, width, height, onClose }: ExperimentsOverlayProps) {
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showDetail, setShowDetail] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{
+    action: OperatorAction;
+    experiment: Experiment;
+  } | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const scrollRef = useRef<ScrollViewRef>(null);
 
   const refresh = useCallback(async () => {
@@ -31,7 +40,28 @@ export function ExperimentsOverlay({ adapter, width, height, onClose }: Experime
     return () => adapter.stopPolling();
   }, [adapter, refresh]);
 
+  const selected = experiments[selectedIndex] ?? null;
+
   useInput((input, key) => {
+    // Confirmation mode: consume all input
+    if (pendingAction) {
+      if (input === "y") {
+        const { action, experiment } = pendingAction;
+        setPendingAction(null);
+        if (executor) {
+          executeAction(action, experiment, executor)
+            .then(() => setActionMessage(`${action.label} started for "${experiment.id}"`))
+            .catch((err) => setActionMessage(`error: ${formatError(err)}`));
+        }
+        return;
+      }
+      if (input === "n" || key.escape) {
+        setPendingAction(null);
+        return;
+      }
+      return;
+    }
+
     if (key.escape) {
       if (showDetail) {
         setShowDetail(false);
@@ -49,6 +79,20 @@ export function ExperimentsOverlay({ adapter, width, height, onClose }: Experime
     if (key.return) {
       setShowDetail((prev) => !prev);
     }
+    if (input === "a" && selected && executor) {
+      const actions = adapter.getActions().filter(
+        (act) => !act.appliesTo || act.appliesTo(selected),
+      );
+      if (actions.length === 0) return;
+      const action = actions[0];
+      if (action.confirmRequired) {
+        setPendingAction({ action, experiment: selected });
+      } else {
+        executeAction(action, selected, executor)
+          .then(() => setActionMessage(`${action.label} started for "${selected.id}"`))
+          .catch((err) => setActionMessage(`error: ${formatError(err)}`));
+      }
+    }
   });
 
   useEffect(() => {
@@ -57,7 +101,13 @@ export function ExperimentsOverlay({ adapter, width, height, onClose }: Experime
     }
   }, [experiments.length, selectedIndex]);
 
-  const selected = experiments[selectedIndex] ?? null;
+  // Clear action message after 5 seconds
+  useEffect(() => {
+    if (!actionMessage) return;
+    const timer = setTimeout(() => setActionMessage(null), 5000);
+    return () => clearTimeout(timer);
+  }, [actionMessage]);
+
   const summary = adapter.getSummary();
   const columns = adapter.getColumns(width - 4);
   const bodyHeight = height - 4; // header + summary + sparkline + pad
@@ -67,7 +117,7 @@ export function ExperimentsOverlay({ adapter, width, height, onClose }: Experime
       <OverlayHeader
         width={width}
         title="EXPERIMENTS"
-        hints="ESC close  ↑↓ select  Enter detail"
+        hints="ESC close  ↑↓ select  Enter detail  a action"
       />
 
       {/* Summary line */}
@@ -116,6 +166,20 @@ export function ExperimentsOverlay({ adapter, width, height, onClose }: Experime
           width={width}
         />
       </Box>
+
+      {/* Confirmation bar / action message */}
+      {pendingAction && (
+        <Box flexShrink={0} paddingX={1}>
+          <Text color={C.bright} bold>
+            {pendingAction.action.label} &quot;{pendingAction.experiment.id}&quot;? [y]es / [n]o
+          </Text>
+        </Box>
+      )}
+      {actionMessage && !pendingAction && (
+        <Box flexShrink={0} paddingX={1}>
+          <Text color={C.dim}>{actionMessage}</Text>
+        </Box>
+      )}
     </Box>
   );
 }
