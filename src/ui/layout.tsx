@@ -92,6 +92,9 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
   }, [runtime.proseWatcher]);
 
   // Experiment adapter polling
+  // Note: ExperimentAdapter.onUpdate has no unsubscribe API; registering once is safe
+  // since runtime.experimentAdapter is stable for the lifetime of the component.
+  const experimentCallbackRegistered = useRef(false);
   useEffect(() => {
     const ea = runtime.experimentAdapter;
     if (!ea) return;
@@ -101,7 +104,10 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
       setExperimentSummary(ea.getSummary());
     };
     refresh();
-    ea.onUpdate(() => { refresh(); });
+    if (!experimentCallbackRegistered.current) {
+      experimentCallbackRegistered.current = true;
+      ea.onUpdate(refresh);
+    }
   }, [runtime.experimentAdapter]);
 
   // Poll tasks and metrics every 5 seconds
@@ -525,6 +531,8 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
   }
 
   const { height, width } = useScreenSize();
+  const halfPanelWidth = Math.floor((width - 1) / 2) - 2;
+  const closeOverlay = useCallback(() => setActiveOverlay("none"), []);
 
   // ── Fullscreen overlays ───────────────────────────────────────
   if (activeOverlay === "tasks") {
@@ -535,7 +543,7 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           executor={executor}
           width={width}
           height={height}
-          onClose={() => setActiveOverlay("none")}
+          onClose={closeOverlay}
         />
       </Box>
     );
@@ -549,7 +557,7 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           metricStore={metricStore}
           width={width}
           height={height}
-          onClose={() => setActiveOverlay("none")}
+          onClose={closeOverlay}
         />
       </Box>
     );
@@ -563,7 +571,7 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           width={width}
           height={height}
           focusRunId={focusProseRunId}
-          onClose={() => { setActiveOverlay("none"); setFocusProseRunId(undefined); }}
+          onClose={() => { closeOverlay(); setFocusProseRunId(undefined); }}
         />
       </Box>
     );
@@ -577,7 +585,7 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           executor={executor}
           width={width}
           height={height}
-          onClose={() => setActiveOverlay("none")}
+          onClose={closeOverlay}
         />
       </Box>
     );
@@ -596,9 +604,9 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
 
         <Box flexShrink={0} flexDirection="row">
           <Box flexGrow={1} flexBasis={0} flexDirection="column" paddingX={1}>
-            {panelGroup === "default" && <MetricsDashboard metricData={metricData} width={Math.floor((width - 1) / 2) - 2} />}
-            {panelGroup === "prose" && <ProseRunPanel runs={proseRuns} width={Math.floor((width - 1) / 2) - 2} />}
-            {panelGroup === "experiments" && <ExperimentSummaryPanel summary={experimentSummary} width={Math.floor((width - 1) / 2) - 2} />}
+            {panelGroup === "default" && <MetricsDashboard metricData={metricData} width={halfPanelWidth} />}
+            {panelGroup === "prose" && <ProseRunPanel runs={proseRuns} width={halfPanelWidth} />}
+            {panelGroup === "experiments" && <ExperimentSummaryPanel summary={experimentSummary} width={halfPanelWidth} />}
           </Box>
           <Box width={1} flexDirection="column" alignItems="center">
             <Text color={C.primary} wrap="truncate">
@@ -606,9 +614,9 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
             </Text>
           </Box>
           <Box flexGrow={1} flexBasis={0} flexDirection="column" paddingX={1}>
-            {panelGroup === "default" && <TaskListPanel tasks={tasks} resources={resourceData} width={Math.floor((width - 1) / 2) - 2} />}
-            {panelGroup === "prose" && <ProseStepPanel run={activeProseRun} width={Math.floor((width - 1) / 2) - 2} />}
-            {panelGroup === "experiments" && <ExperimentLeaderboardPanel experiments={experimentList} width={Math.floor((width - 1) / 2) - 2} />}
+            {panelGroup === "default" && <TaskListPanel tasks={tasks} resources={resourceData} width={halfPanelWidth} />}
+            {panelGroup === "prose" && <ProseStepPanel run={activeProseRun} width={halfPanelWidth} />}
+            {panelGroup === "experiments" && <ExperimentLeaderboardPanel experiments={experimentList} width={halfPanelWidth} />}
           </Box>
         </Box>
 

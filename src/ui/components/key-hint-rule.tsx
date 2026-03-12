@@ -21,10 +21,10 @@ export function KeyHintRule({ hasMultipleGroups }: KeyHintRuleProps) {
     ? [...BASE_HINTS, { key: "^p", label: "panels" }]
     : BASE_HINTS;
 
-  let hintsWidth = 0;
-  for (const h of hints) {
-    hintsWidth += 2 + h.key.length + 1 + h.label.length + 1;
-  }
+  const hintsWidth = hints.reduce(
+    (sum, h) => sum + 2 + h.key.length + 1 + h.label.length + 1,
+    0,
+  );
   const fill = Math.max(0, w - hintsWidth);
 
   return (
@@ -32,13 +32,8 @@ export function KeyHintRule({ hasMultipleGroups }: KeyHintRuleProps) {
       <Text color={C.primary}>{G.rule.repeat(fill)}</Text>
       {hints.map((h, i) => (
         <React.Fragment key={i}>
-          {i === 0 ? (
-            <Text color={C.dim}> </Text>
-          ) : (
-            <Text color={C.dim}>{G.rule} </Text>
-          )}
-          <Text color={C.dim}>{h.key}</Text>
-          <Text color={C.dim}> {h.label} </Text>
+          <Text color={C.dim}>{i === 0 ? " " : `${G.rule} `}</Text>
+          <Text color={C.dim}>{h.key} {h.label} </Text>
         </React.Fragment>
       ))}
     </Box>

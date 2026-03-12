@@ -40,6 +40,7 @@ export const STATUS_STYLE: Record<string, { color: string; glyph: string; fallba
   running:   { color: C.primary, glyph: "▸", fallback: "[>]"  },
   pending:   { color: C.dim,     glyph: "╌", fallback: "[-]"  },
   done:      { color: C.success, glyph: "✓", fallback: "[OK]" },
+  complete:  { color: C.success, glyph: "✓", fallback: "[OK]" },
   error:     { color: C.error,   glyph: "!", fallback: "[!]"  },
   stalled:   { color: "magenta", glyph: "⏸", fallback: "[||]" },
   keep:      { color: C.success, glyph: "↑", fallback: "[^]"  },
@@ -52,16 +53,20 @@ export function setUnicodeFallback(v: boolean): void {
   _unicodeFallback = v;
 }
 
+function isAsciiMode(): boolean {
+  return _unicodeFallback || process.env.HELIOS_ASCII === "1";
+}
+
 /** General-purpose fallback: returns ascii when fallback mode is active. */
 export function glyph(unicode: string, ascii: string): string {
-  return (_unicodeFallback || process.env.HELIOS_ASCII === "1") ? ascii : unicode;
+  return isAsciiMode() ? ascii : unicode;
 }
 
 /** Resolve glyph based on fallback mode (HELIOS_ASCII=1 or config) */
 export function statusGlyph(status: string): string {
   const s = STATUS_STYLE[status];
   if (!s) return "?";
-  return (_unicodeFallback || process.env.HELIOS_ASCII === "1") ? s.fallback : s.glyph;
+  return isAsciiMode() ? s.fallback : s.glyph;
 }
 
 /** Get the color for a status */

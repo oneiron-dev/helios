@@ -1,6 +1,5 @@
 import { Box, Text } from "ink";
-import { C } from "../theme.js";
-import { statusGlyph, statusColor } from "../theme.js";
+import { C, statusGlyph, statusColor } from "../theme.js";
 import { formatDuration } from "../format.js";
 import type { ProseRun } from "../../prose/types.js";
 

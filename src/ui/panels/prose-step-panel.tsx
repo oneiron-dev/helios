@@ -1,6 +1,5 @@
 import { Box, Text } from "ink";
-import { C } from "../theme.js";
-import { statusGlyph, statusColor } from "../theme.js";
+import { C, statusGlyph, statusColor } from "../theme.js";
 import type { ProseRun } from "../../prose/types.js";
 
 interface ProseStepPanelProps {
@@ -34,7 +33,7 @@ export function ProseStepPanel({ run, width }: ProseStepPanelProps) {
         return (
           <Box key={step.number} paddingLeft={1}>
             <Text color={statusColor(step.status)}>
-              {statusGlyph(step.status === "complete" ? "done" : step.status)}{" "}
+              {statusGlyph(step.status)}{" "}
             </Text>
             <Text color={C.dim}>{String(step.number).padStart(2)}{" "}</Text>
             <Text color={C.text}>{label}</Text>
