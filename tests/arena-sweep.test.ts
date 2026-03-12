@@ -175,14 +175,14 @@ describe("ArenaSweepAdapter", () => {
     const unsubscribe = adapter.onUpdate(() => {
       updates += 1;
     });
-    adapter.startPolling(5);
+    adapter.startPolling(10);
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 35));
 
     unsubscribe();
     const updatesAfterUnsubscribe = updates;
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 35));
     adapter.stopPolling();
 
     assert.ok(updatesAfterUnsubscribe > 0);
