@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { AutoresearchTsvAdapter } from "../src/experiments/adapters/autoresearch-tsv.js";
@@ -153,6 +153,69 @@ describe("AutoresearchTsvAdapter", () => {
     const diff = actions.find((a) => a.name === "view-config-diff");
     expect(diff).toBeDefined();
     expect(diff!.confirmRequired).toBeUndefined();
+  });
+
+  it("load() reads reasoning from reasoning.jsonl sidecar", async () => {
+    // Write reasoning sidecar
+    const reasoningLines = [
+      JSON.stringify({ experimentId: "abc1234", reasoning: "Baseline run to establish floor metrics" }),
+      JSON.stringify({ experimentId: "def5678", reasoning: "Entity embeddings should improve REL precision" }),
+    ].join("\n");
+    writeFileSync(join(RESEARCH_DIR, "reasoning.jsonl"), reasoningLines);
+
+    const adapter = new AutoresearchTsvAdapter(TEST_DIR);
+    const exps = await adapter.load();
+
+    expect(exps[0].metadata.reasoning).toBe("Baseline run to establish floor metrics");
+    expect(exps[1].metadata.reasoning).toBe("Entity embeddings should improve REL precision");
+    // Row without reasoning entry falls back to null
+    expect(exps[2].metadata.reasoning).toBeNull();
+
+    // Cleanup sidecar for other tests
+    unlinkSync(join(RESEARCH_DIR, "reasoning.jsonl"));
+  });
+
+  it("getDetail() shows Captain Reasoning section when available", async () => {
+    // Write reasoning for one experiment
+    writeFileSync(
+      join(RESEARCH_DIR, "reasoning.jsonl"),
+      JSON.stringify({ experimentId: "abc1234", reasoning: "Testing baseline" }),
+    );
+
+    const adapter = new AutoresearchTsvAdapter(TEST_DIR);
+    await adapter.load();
+    const detail = adapter.getDetail("abc1234");
+
+    const reasoningSection = detail.sections.find((s) => s.title === "Captain Reasoning");
+    expect(reasoningSection).toBeDefined();
+    expect(reasoningSection!.content).toBe("Testing baseline");
+
+    // No reasoning for this one — section should not appear
+    const detail2 = adapter.getDetail("ghi9012");
+    const noReasoning = detail2.sections.find((s) => s.title === "Captain Reasoning");
+    expect(noReasoning).toBeUndefined();
+
+    unlinkSync(join(RESEARCH_DIR, "reasoning.jsonl"));
+  });
+
+  it("handles malformed reasoning.jsonl lines gracefully", async () => {
+    writeFileSync(
+      join(RESEARCH_DIR, "reasoning.jsonl"),
+      [
+        "not json at all",
+        JSON.stringify({ experimentId: "abc1234", reasoning: "Valid entry" }),
+        JSON.stringify({ unrelated: "field" }),
+        "",
+      ].join("\n"),
+    );
+
+    const adapter = new AutoresearchTsvAdapter(TEST_DIR);
+    const exps = await adapter.load();
+
+    expect(exps[0].metadata.reasoning).toBe("Valid entry");
+    expect(exps[1].metadata.reasoning).toBeNull();
+
+    unlinkSync(join(RESEARCH_DIR, "reasoning.jsonl"));
   });
 
   it("handles empty TSV (header only) with 0 experiments", async () => {
