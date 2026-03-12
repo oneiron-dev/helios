@@ -251,8 +251,11 @@ export class ArenaSweepAdapter implements ExperimentAdapter {
     }
   }
 
-  onUpdate(callback: () => void): void {
+  onUpdate(callback: () => void): () => void {
     this.callbacks.push(callback);
+    return () => {
+      this.callbacks = this.callbacks.filter((cb) => cb !== callback);
+    };
   }
 
   // ─── Private helpers ─────────────────────────────────

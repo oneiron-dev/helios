@@ -151,4 +151,15 @@ describe("ArenaSweepAdapter", () => {
     assert.strictEqual(summary.totalCount, 0);
     assert.strictEqual(summary.bestScore, null);
   });
+
+  test("removes update listeners on unsubscribe", () => {
+    const adapter = new ArenaSweepAdapter(TEST_DIR);
+    const unsubscribe = adapter.onUpdate(() => {});
+
+    assert.strictEqual((adapter as any).callbacks.length, 1);
+
+    unsubscribe();
+
+    assert.strictEqual((adapter as any).callbacks.length, 0);
+  });
 });

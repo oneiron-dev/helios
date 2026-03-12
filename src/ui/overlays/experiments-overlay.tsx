@@ -26,9 +26,8 @@ export function ExperimentsOverlay({ adapter, width, height, onClose }: Experime
 
   useEffect(() => {
     refresh();
-    adapter.onUpdate(() => refresh());
-    adapter.startPolling(5000);
-    return () => adapter.stopPolling();
+    const unsubscribe = adapter.onUpdate(() => { void refresh(); });
+    return unsubscribe;
   }, [adapter, refresh]);
 
   useInput((input, key) => {

@@ -57,5 +57,5 @@ export interface ExperimentAdapter {
   getActions(): OperatorAction[];
   startPolling(intervalMs?: number): void;
   stopPolling(): void;
-  onUpdate(callback: () => void): void;
+  onUpdate(callback: () => void): () => void;
 }
