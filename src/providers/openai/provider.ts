@@ -243,6 +243,8 @@ export class OpenAIProvider implements ModelProvider {
       }
 
       if (result.toolCalls.length > 0) {
+        const multimodalContent: ContentItem[] = [];
+
         for (const tc of result.toolCalls) {
           debugLog("openai", "tool_call", { name: tc.name, args: tc.args });
           yield {
@@ -268,12 +270,19 @@ export class OpenAIProvider implements ModelProvider {
             }
           }
 
-          // Strip multimodal attachments — OpenAI doesn't support visual tool results
+          // Extract multimodal attachments — inject as user message after tool outputs
           let outputForHistory = toolResult;
           try {
             const parsed = JSON.parse(toolResult);
-            if (parsed?.__multimodal) {
-              outputForHistory = parsed.text ?? "[visual content not supported in this mode]";
+            if (parsed?.__multimodal && Array.isArray(parsed.attachments)) {
+              outputForHistory = parsed.text ?? "[visual content]";
+              for (const att of parsed.attachments as Array<{ mediaType: string; data: string }>) {
+                if (att.mediaType.startsWith("image/")) {
+                  multimodalContent.push({ type: "input_image", image_url: `data:${att.mediaType};base64,${att.data}`, detail: "high" });
+                } else {
+                  multimodalContent.push({ type: "input_file", filename: outputForHistory, file_data: `data:${att.mediaType};base64,${att.data}` });
+                }
+              }
             }
           } catch { /* not JSON */ }
 
@@ -285,6 +294,12 @@ export class OpenAIProvider implements ModelProvider {
             call_id: tc.call_id,
             output: outputForHistory,
           });
+        }
+
+        // Inject visual content as a follow-up user message so the model can see it
+        if (multimodalContent.length > 0) {
+          multimodalContent.push({ type: "input_text", text: "Above: visual content from the tool result(s)." });
+          history.push({ type: "message", role: "user", content: multimodalContent });
         }
 
         continueLoop = true;
@@ -311,10 +326,10 @@ export class OpenAIProvider implements ModelProvider {
       if (item.type !== "message" || !Array.isArray(item.content)) continue;
       item.content = item.content.map((block) => {
         if (block.type === "input_image" && block.image_url.length > 200) {
-          return { type: "input_text" as const, text: "[image attachment stripped]" } as unknown as typeof block;
+          return { type: "input_text" as const, text: "[image stripped]" } as unknown as typeof block;
         }
         if (block.type === "input_file" && block.file_data.length > 200) {
-          return { type: "input_text" as const, text: "[file attachment stripped]" } as unknown as typeof block;
+          return { type: "input_text" as const, text: "[file stripped]" } as unknown as typeof block;
         }
         return block;
       });
