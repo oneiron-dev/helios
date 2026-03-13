@@ -65,8 +65,19 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
     if (!session) return [];
     const stored = orchestrator.sessionStore.getMessages(session.id, 500);
     return stored
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .map((m) => ({ id: ++messageIdCounter, role: m.role as Message["role"], content: m.content }));
+      .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool")
+      .map((m) => {
+        if (m.role === "tool" && m.toolCalls) {
+          const meta = JSON.parse(m.toolCalls) as { callId?: string; isError?: boolean };
+          return {
+            id: ++messageIdCounter,
+            role: "tool" as const,
+            content: m.content,
+            tool: { callId: meta.callId ?? "", name: "tool", args: {}, result: m.content, isError: meta.isError },
+          };
+        }
+        return { id: ++messageIdCounter, role: m.role as Message["role"], content: m.content };
+      });
   });
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
@@ -412,7 +423,7 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
 
     const onTick = (config: MonitorConfig) => {
       if (isStreamingRef.current) return;
-      const message = buildMonitorMessage(config, executor, metricStore);
+      const message = buildMonitorMessage(config, executor, metricStore, memoryStore);
       handleSubmitRef.current(message);
     };
 

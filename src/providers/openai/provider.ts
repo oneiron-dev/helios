@@ -169,17 +169,50 @@ export class OpenAIProvider implements ModelProvider {
 
     if (!this.conversationHistory.has(id)) {
       const stored = this.sessionStore.getMessages(id, 500);
-      const history: ResponseItem[] = stored
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m) => ({
-          type: "message" as const,
-          role: m.role as "user" | "assistant",
-          content: [
-            m.role === "user"
-              ? { type: "input_text" as const, text: m.content }
-              : { type: "output_text" as const, text: m.content },
-          ],
-        }));
+      const history: ResponseItem[] = [];
+
+      for (const m of stored) {
+        if (m.role === "user") {
+          history.push({
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: m.content }],
+          });
+        } else if (m.role === "assistant") {
+          if (m.toolCalls) {
+            const tcs = JSON.parse(m.toolCalls) as Array<{ id: string; name: string; args: Record<string, unknown> }>;
+            if (m.content) {
+              history.push({
+                type: "message",
+                role: "assistant",
+                content: [{ type: "output_text", text: m.content }],
+              });
+            }
+            for (const tc of tcs) {
+              history.push({
+                type: "function_call",
+                name: tc.name,
+                arguments: JSON.stringify(tc.args),
+                call_id: tc.id,
+              });
+            }
+          } else {
+            history.push({
+              type: "message",
+              role: "assistant",
+              content: [{ type: "output_text", text: m.content }],
+            });
+          }
+        } else if (m.role === "tool") {
+          const meta = m.toolCalls ? JSON.parse(m.toolCalls) as { callId?: string; isError?: boolean } : {};
+          history.push({
+            type: "function_call_output",
+            call_id: meta.callId ?? "",
+            output: m.content,
+          });
+        }
+      }
+
       this.conversationHistory.set(id, history);
     }
     return session;

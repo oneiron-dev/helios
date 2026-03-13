@@ -419,20 +419,21 @@ describe("ClaudeProvider", () => {
       expect(requestBody.messages[4].content).toBe("Turn 3");
     });
 
-    it("resume with tool message history filters to user/assistant only", async () => {
+    it("resume reconstructs tool messages into history", async () => {
       const created = await provider.createSession({});
       store.addMessage(created.id, "user", "Run command");
-      store.addMessage(created.id, "assistant", "Running...");
-      store.addMessage(created.id, "tool", "tool output"); // should be filtered
-      store.addMessage(created.id, "system", "system msg"); // should be filtered
+      store.addMessage(created.id, "assistant", "Running...", JSON.stringify([{ id: "tc1", name: "remote_exec", args: { command: "ls" } }]));
+      store.addMessage(created.id, "tool", "file.txt", JSON.stringify({ callId: "tc1", isError: false }));
+      store.addMessage(created.id, "system", "system msg"); // system still skipped
 
       (provider as any).conversationHistory.delete(created.id);
       await provider.resumeSession(created.id);
 
       const history = (provider as any).conversationHistory.get(created.id);
-      expect(history).toHaveLength(2);
+      expect(history).toHaveLength(3); // user + assistant(with tool_use) + user(tool_result)
       expect(history[0].role).toBe("user");
       expect(history[1].role).toBe("assistant");
+      expect(history[2].role).toBe("user"); // tool_result wrapped in user message
     });
 
     it("multiple sends accumulate in history", async () => {

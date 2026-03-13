@@ -10,6 +10,7 @@ export interface StoredMessage {
   content: string;
   toolCalls?: string;
   tokenCount?: number;
+  model?: string;
   timestamp: number;
 }
 
@@ -17,6 +18,7 @@ export interface SessionSummary {
   id: string;
   provider: string;
   model: string | null;
+  title: string | null;
   createdAt: number;
   lastActiveAt: number;
   messageCount: number;
@@ -118,16 +120,18 @@ export class SessionStore {
     content: string,
     toolCalls?: string,
     tokenCount?: number,
+    model?: string,
   ): void {
     this.stmt(
-      `INSERT INTO messages (session_id, role, content, tool_calls, token_count, timestamp)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO messages (session_id, role, content, tool_calls, token_count, model, timestamp)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       sessionId,
       role,
       content,
       toolCalls ?? null,
       tokenCount ?? null,
+      model ?? null,
       Date.now(),
     );
   }
@@ -150,8 +154,13 @@ export class SessionStore {
       content: row.content as string,
       toolCalls: row.tool_calls as string | undefined,
       tokenCount: row.token_count as number | undefined,
+      model: row.model as string | undefined,
       timestamp: row.timestamp as number,
     }));
+  }
+
+  updateSessionTitle(sessionId: string, title: string): void {
+    this.stmt("UPDATE sessions SET title = ? WHERE id = ?").run(title, sessionId);
   }
 
   listSessions(limit = 20): Session[] {
@@ -178,6 +187,7 @@ export class SessionStore {
            s.id,
            s.provider,
            s.model,
+           s.title,
            s.created_at,
            s.last_active_at,
            s.cost_usd,
@@ -201,6 +211,7 @@ export class SessionStore {
       id: row.id as string,
       provider: row.provider as string,
       model: (row.model as string | null) ?? null,
+      title: (row.title as string | null) ?? null,
       createdAt: row.created_at as number,
       lastActiveAt: row.last_active_at as number,
       messageCount: row.message_count as number,

@@ -187,12 +187,45 @@ export class ClaudeProvider implements ModelProvider {
       this.sdkSessionIds.set(id, session.providerSessionId);
     }
 
-    // Restore conversation history for raw API mode
+    // Restore conversation history for raw API mode (including tool calls/results)
     if (!this.conversationHistory.has(id)) {
       const stored = this.sessionStore.getMessages(id, 500);
-      const history: AnthropicMessage[] = stored
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+      const history: AnthropicMessage[] = [];
+
+      for (const m of stored) {
+        if (m.role === "user") {
+          history.push({ role: "user", content: m.content });
+        } else if (m.role === "assistant") {
+          if (m.toolCalls) {
+            // Reconstruct assistant message with tool_use blocks
+            const tcs = JSON.parse(m.toolCalls) as Array<{ id: string; name: string; args: Record<string, unknown> }>;
+            const content: AnthropicContent[] = [];
+            if (m.content) content.push({ type: "text", text: m.content });
+            for (const tc of tcs) {
+              content.push({ type: "tool_use", id: tc.id, name: tc.name, input: tc.args });
+            }
+            history.push({ role: "assistant", content });
+          } else {
+            history.push({ role: "assistant", content: m.content });
+          }
+        } else if (m.role === "tool") {
+          // Tool results go inside a user-role message for Anthropic API
+          const meta = m.toolCalls ? JSON.parse(m.toolCalls) as { callId?: string; isError?: boolean } : {};
+          const toolResult: AnthropicContent = {
+            type: "tool_result",
+            tool_use_id: meta.callId ?? "",
+            content: m.content,
+            is_error: meta.isError,
+          };
+          const last = history[history.length - 1];
+          if (last?.role === "user" && Array.isArray(last.content)) {
+            (last.content as AnthropicContent[]).push(toolResult);
+          } else {
+            history.push({ role: "user", content: [toolResult] });
+          }
+        }
+      }
+
       this.conversationHistory.set(id, history);
     }
     return session;

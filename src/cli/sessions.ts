@@ -47,7 +47,7 @@ export const sessions = Command.make(
           pad(String(s.messageCount), 6) +
           pad(formatCost(s.costUsd), 10) +
           pad(formatDate(s.lastActiveAt), 24) +
-          (s.firstUserMessage ?? "(no messages)").split("\n")[0].slice(0, 60),
+          (s.title ?? s.firstUserMessage ?? "(no messages)").split("\n")[0].slice(0, 60),
         );
       }
 

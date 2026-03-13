@@ -9,6 +9,7 @@ import type { ConnectionPool } from "../remote/connection-pool.js";
 import type { MetricCollector } from "../metrics/collector.js";
 import type { MetricStore } from "../metrics/store.js";
 import type { ExperimentTracker } from "../memory/experiment-tracker.js";
+import type { MemoryStore } from "../memory/memory-store.js";
 import type { Notifier } from "../notifications/notifier.js";
 import type { BackgroundProcess } from "../remote/types.js";
 import type { MonitorConfig } from "./monitor.js";
@@ -120,6 +121,7 @@ export function buildMonitorMessage(
   config: MonitorConfig,
   executor: RemoteExecutor,
   metricStore: MetricStore,
+  memory?: MemoryStore,
 ): string {
   const elapsedMin = Math.round((Date.now() - config.startedAt) / 60_000);
   const intervalMin = Math.round(config.intervalMs / 60_000);
@@ -143,6 +145,18 @@ export function buildMonitorMessage(
     parts.push("Metrics:");
     for (const name of metricNames) {
       parts.push(`  ${name}: ${latestMetrics[name]}`);
+    }
+  }
+
+  // Include key memory context so the model doesn't lose orientation
+  if (memory) {
+    const best = memory.read("/best");
+    if (best) {
+      parts.push(`\nYour best: ${best.gist}`);
+    }
+    const goal = memory.read("/goal");
+    if (goal) {
+      parts.push(`Stored goal: ${goal.gist}`);
     }
   }
 

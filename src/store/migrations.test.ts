@@ -47,7 +47,7 @@ describe("runMigrations", () => {
   it("runs all migrations on fresh database (version reaches 5)", () => {
     const db = freshDb();
     runMigrations(db);
-    expect(currentVersion(db)).toBe(5);
+    expect(currentVersion(db)).toBe(6);
     db.close();
   });
 
@@ -55,7 +55,7 @@ describe("runMigrations", () => {
     const db = freshDb();
     runMigrations(db);
     expect(() => runMigrations(db)).not.toThrow();
-    expect(currentVersion(db)).toBe(5);
+    expect(currentVersion(db)).toBe(6);
     db.close();
   });
 
@@ -226,7 +226,7 @@ describe("runMigrations", () => {
   it("respects existing schema version (skips applied migrations)", () => {
     const db = freshDb();
     runMigrations(db);
-    expect(currentVersion(db)).toBe(5);
+    expect(currentVersion(db)).toBe(6);
 
     // Running again should be a no-op — version stays at 5
     runMigrations(db);
@@ -236,7 +236,7 @@ describe("runMigrations", () => {
       }[]
     ).map((r) => r.version);
     // Each version should appear exactly once
-    expect(versions).toEqual([1, 2, 3, 4, 5]);
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6]);
     db.close();
   });
 

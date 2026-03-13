@@ -416,20 +416,22 @@ describe("OpenAIProvider — History Deep Edge Cases", () => {
       });
     });
 
-    it("resume skips non-user/assistant messages", async () => {
+    it("resume reconstructs tool messages and skips system", async () => {
       const session = await provider.createSession({});
       store.addMessage(session.id, "system", "Sys");
       store.addMessage(session.id, "user", "User msg");
-      store.addMessage(session.id, "tool", "Tool msg");
+      store.addMessage(session.id, "tool", "Tool msg", JSON.stringify({ callId: "tc1", isError: false }));
       store.addMessage(session.id, "assistant", "Asst msg");
 
       (provider as any).conversationHistory.delete(session.id);
       await provider.resumeSession(session.id);
 
       const history = (provider as any).conversationHistory.get(session.id);
-      expect(history).toHaveLength(2);
-      expect(history[0].role).toBe("user");
-      expect(history[1].role).toBe("assistant");
+      // system skipped, tool becomes function_call_output
+      expect(history).toHaveLength(3);
+      expect(history[0].type).toBe("message"); // user
+      expect(history[1].type).toBe("function_call_output"); // tool
+      expect(history[2].type).toBe("message"); // assistant
     });
 
     it("resume then send includes full history in API request body", async () => {

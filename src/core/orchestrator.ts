@@ -191,9 +191,16 @@ export class Orchestrator {
       }
 
       const session = await this.ensureSession();
-      debugLog("orchestrator", "send", { provider: this.activeProvider!.name, model: this.activeProvider!.currentModel, session: session.id, messageLen: message.length });
+      const isEphemeral = isEphemeralSession(session);
+      const model = this.activeProvider!.currentModel;
+      debugLog("orchestrator", "send", { provider: this.activeProvider!.name, model, session: session.id, messageLen: message.length });
       this.sessionStore.updateLastActive(session.id);
-      this.sessionStore.addMessage(session.id, "user", message);
+
+      // Check if this is the first message (for title generation)
+      const isFirstMessage = !isEphemeral && !this.sessionStore.hasMessages(session.id);
+      if (!isEphemeral) {
+        this.sessionStore.addMessage(session.id, "user", message);
+      }
 
       // Prepend sticky notes to the message so the model always sees them
       let augmentedMessage = message;
@@ -206,6 +213,12 @@ export class Orchestrator {
 
       const responseParts: string[] = [];
 
+      // Per-turn tracking for tool call persistence
+      let turnText: string[] = [];
+      let turnToolCalls: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
+      let turnFlushed = false;
+      let lastOutputTokens: number | undefined;
+
       try {
         for await (const event of this.activeProvider!.send(
           session,
@@ -214,13 +227,47 @@ export class Orchestrator {
           attachments,
         )) {
           if (event.type === "text" && event.delta) {
+            // New text after tool results = new turn
+            if (turnFlushed) {
+              turnText = [];
+              turnToolCalls = [];
+              turnFlushed = false;
+            }
             responseParts.push(event.delta);
+            turnText.push(event.delta);
+          }
+
+          if (event.type === "tool_call") {
+            turnToolCalls.push({ id: event.id, name: event.name, args: event.args });
+          }
+
+          if (event.type === "tool_result" && !isEphemeral) {
+            // Flush the assistant turn that produced these tool calls
+            if (!turnFlushed && (turnText.length > 0 || turnToolCalls.length > 0)) {
+              this.sessionStore.addMessage(
+                session.id,
+                "assistant",
+                turnText.join(""),
+                turnToolCalls.length > 0 ? JSON.stringify(turnToolCalls) : undefined,
+                undefined,
+                model,
+              );
+              turnFlushed = true;
+            }
+            // Store tool result
+            this.sessionStore.addMessage(
+              session.id,
+              "tool",
+              event.result,
+              JSON.stringify({ callId: event.callId, isError: event.isError }),
+            );
           }
 
           if (event.type === "done") {
             debugLog("orchestrator", "done", event.usage ?? {});
             if (event.usage) {
               this.addCost(event.usage.costUsd ?? 0, event.usage.inputTokens, event.usage.outputTokens);
+              lastOutputTokens = event.usage.outputTokens;
             }
             if (event.usage?.inputTokens) {
               this._lastInputTokens = event.usage.inputTokens;
@@ -237,13 +284,26 @@ export class Orchestrator {
       // Check if context window is filling up — trigger checkpoint if needed
       yield* this.maybeCheckpoint(session);
 
-      const fullResponse = responseParts.join("");
-      if (fullResponse) {
-        this.sessionStore.addMessage(
-          session.id,
-          "assistant",
-          fullResponse,
-        );
+      // Store the final assistant turn (no tool calls — just text)
+      if (!turnFlushed && !isEphemeral) {
+        const finalText = turnText.join("");
+        if (finalText) {
+          this.sessionStore.addMessage(
+            session.id,
+            "assistant",
+            finalText,
+            undefined,
+            lastOutputTokens,
+            model,
+          );
+        }
+      }
+
+      // Generate session title from first user message
+      if (isFirstMessage) {
+        const firstLine = message.split("\n")[0].trim();
+        const title = firstLine.length > 60 ? firstLine.slice(0, 57) + "..." : firstLine;
+        this.sessionStore.updateSessionTitle(session.id, title);
       }
     } finally {
       this._sendLock = false;

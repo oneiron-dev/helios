@@ -461,20 +461,24 @@ describe("OpenAIProvider", () => {
       expect(lastItem.content[0].text).toBe("Turn 3");
     });
 
-    it("resume with tool/system messages filters to user/assistant only", async () => {
+    it("resume reconstructs tool messages and skips system", async () => {
       const created = await provider.createSession({});
       store.addMessage(created.id, "user", "Run command");
-      store.addMessage(created.id, "assistant", "Running...");
-      store.addMessage(created.id, "tool", "tool output");
+      store.addMessage(created.id, "assistant", "Running...", JSON.stringify([{ id: "tc1", name: "remote_exec", args: { command: "ls" } }]));
+      store.addMessage(created.id, "tool", "file.txt", JSON.stringify({ callId: "tc1", isError: false }));
       store.addMessage(created.id, "system", "system msg");
 
       (provider as any).conversationHistory.delete(created.id);
       await provider.resumeSession(created.id);
 
       const history = (provider as any).conversationHistory.get(created.id);
-      expect(history).toHaveLength(2);
-      expect(history[0].role).toBe("user");
-      expect(history[1].role).toBe("assistant");
+      // user + assistant(text) + function_call + function_call_output = 4, system skipped
+      expect(history).toHaveLength(4);
+      expect(history[0].type).toBe("message");
+      expect((history[0] as any).role).toBe("user");
+      expect(history[1].type).toBe("message"); // assistant text
+      expect(history[2].type).toBe("function_call");
+      expect(history[3].type).toBe("function_call_output");
     });
 
     it("multiple sends accumulate history correctly", async () => {

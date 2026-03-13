@@ -541,20 +541,22 @@ describe("ClaudeProvider — History Deep Edge Cases", () => {
       expect(history).toEqual([]);
     });
 
-    it("resume skips non-user/assistant messages (system, tool)", async () => {
+    it("resume reconstructs tool messages and skips system", async () => {
       const session = await provider.createSession({});
       store.addMessage(session.id, "system", "System msg");
       store.addMessage(session.id, "user", "User msg");
-      store.addMessage(session.id, "tool", "Tool msg");
+      store.addMessage(session.id, "tool", "Tool msg", JSON.stringify({ callId: "tc1", isError: false }));
       store.addMessage(session.id, "assistant", "Assistant msg");
 
       (provider as any).conversationHistory.delete(session.id);
       await provider.resumeSession(session.id);
 
       const history = (provider as any).conversationHistory.get(session.id);
-      expect(history).toHaveLength(2);
+      // system skipped, tool becomes user(tool_result)
+      expect(history).toHaveLength(3);
       expect(history[0].role).toBe("user");
-      expect(history[1].role).toBe("assistant");
+      expect(history[1].role).toBe("user"); // tool_result in user message
+      expect(history[2].role).toBe("assistant");
     });
 
     it("resume does not re-load if history already exists in memory", async () => {

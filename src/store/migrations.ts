@@ -138,6 +138,13 @@ const migrations: Migration[] = [
       ALTER TABLE sessions ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0;
     `,
   },
+  {
+    version: 6,
+    sql: `
+      ALTER TABLE messages ADD COLUMN model TEXT;
+      ALTER TABLE sessions ADD COLUMN title TEXT;
+    `,
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {
