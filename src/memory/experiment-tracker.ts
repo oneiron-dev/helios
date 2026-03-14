@@ -19,7 +19,7 @@ interface PendingExperiment {
 export class ExperimentTracker {
   private memory: MemoryStore;
   private experimentCount: number | null = null; // null = not yet initialized
-  private pendingCalls = new Map<string, Record<string, unknown>>();
+  private pendingCalls = new Map<string, { args: Record<string, unknown>; createdAt: number }>();
   private experiments = new Map<string, PendingExperiment>(); // "machine:pid" → experiment
 
   constructor(memory: MemoryStore) {
@@ -36,14 +36,32 @@ export class ExperimentTracker {
     return this.experimentCount;
   }
 
+  /** Remove orphaned pending calls and stale experiments. */
+  prune(): void {
+    // Pending calls older than 5 minutes are orphaned (tool_result never arrived)
+    const callCutoff = Date.now() - 5 * 60_000;
+    for (const [id, entry] of this.pendingCalls) {
+      if (entry.createdAt < callCutoff) {
+        this.pendingCalls.delete(id);
+      }
+    }
+    // Experiments running for over 24 hours are stale
+    const expCutoff = Date.now() - 24 * 60 * 60_000;
+    for (const [key, exp] of this.experiments) {
+      if (exp.startedAt < expCutoff) {
+        this.experiments.delete(key);
+      }
+    }
+  }
+
   /** Call this for every AgentEvent from the orchestrator. */
   onEvent(event: AgentEvent): void {
     if (event.type === "tool_call" && event.name === "remote_exec_background") {
-      this.pendingCalls.set(event.id, event.args);
+      this.pendingCalls.set(event.id, { args: event.args, createdAt: Date.now() });
     }
 
     if (event.type === "tool_result" && this.pendingCalls.has(event.callId)) {
-      const args = this.pendingCalls.get(event.callId)!;
+      const { args } = this.pendingCalls.get(event.callId)!;
       this.pendingCalls.delete(event.callId);
 
       if (event.isError) return;

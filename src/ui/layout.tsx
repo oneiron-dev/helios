@@ -161,6 +161,15 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           didCollect = true;
         }
 
+        // Remove finished processes from executor Map to prevent unbounded growth.
+        // Only remove after handleFinishedTasks has processed them.
+        for (const key of finished) {
+          executor.removeBackgroundProcess(key);
+        }
+
+        // Prune orphaned experiment tracker entries
+        if (experimentTracker) experimentTracker.prune();
+
         // Merge subagent entries into task list
         if (subagentManager) {
           for (const sa of subagentManager.listAll()) {
