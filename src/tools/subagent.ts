@@ -60,6 +60,7 @@ Default: inherits your current model. Use cheaper models for simple retrieval/an
         },
         tools_deny: {
           type: "array",
+          items: { type: "string" },
           description: "Tools to exclude from the subagent (e.g. ['sweep'])",
         },
         max_turns: {

@@ -65,7 +65,7 @@ export function createSweepTool(
           type: "object",
           additionalProperties: {
             type: "array",
-            items: {},
+            items: { type: "string" },
           },
           description:
             'Parameter grid. Keys are param names, values are arrays of values. Example: {"lr": [0.001, 0.0001], "bs": [32, 64]}',
