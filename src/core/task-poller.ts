@@ -13,7 +13,7 @@ import type { MemoryStore } from "../memory/memory-store.js";
 import type { Notifier } from "../notifications/notifier.js";
 import type { BackgroundProcess } from "../remote/types.js";
 import type { MonitorConfig } from "./monitor.js";
-import { shellQuote } from "../ui/format.js";
+import { shellQuote, truncate } from "../ui/format.js";
 
 export interface TaskStatus {
   proc: BackgroundProcess;
@@ -134,7 +134,7 @@ export function buildMonitorMessage(
   if (procs.length > 0) {
     parts.push("Tasks:");
     for (const p of procs) {
-      const short = p.command.length > 50 ? p.command.slice(0, 47) + "..." : p.command;
+      const short = truncate(p.command, 50);
       parts.push(`  ◆ ${p.machineId}:${p.pid} running — ${short}`);
     }
   }

@@ -1,6 +1,6 @@
 import { Box, Text } from "ink";
 import { C, G } from "../theme.js";
-import { formatBytes } from "../format.js";
+import { formatBytes, truncate } from "../format.js";
 import type { TaskInfo } from "../types.js";
 import type { MachineResources, GpuInfo } from "../../metrics/resources.js";
 
@@ -22,9 +22,7 @@ export function TaskListPanel({ tasks = [], resources, width }: TaskListPanelPro
       {/* Running tasks */}
       {hasTasks && tasks.slice(0, 5).map((task) => {
         const isSubagent = task.type === "subagent";
-        const name = task.name.length > nameWidth
-          ? task.name.slice(0, nameWidth - 1) + "…"
-          : task.name;
+        const name = truncate(task.name, nameWidth);
         return (
           <Box key={task.id} paddingLeft={1}>
             <Text color={statusColor(task.status)}>

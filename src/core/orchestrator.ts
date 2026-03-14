@@ -14,7 +14,7 @@ import { savePreferences } from "../store/preferences.js";
 import type { ContextGate } from "../memory/context-gate.js";
 import type { StickyManager } from "./stickies.js";
 import { debugLog } from "../paths.js";
-import { formatError } from "../ui/format.js";
+import { formatError, truncate } from "../ui/format.js";
 
 export interface OrchestratorConfig {
   defaultProvider: "claude" | "openai";
@@ -168,6 +168,14 @@ export class Orchestrator {
     const session = await this.activeProvider!.resumeSession(stored.id, this.config.systemPrompt);
     this._activeSession = session;
 
+    // Backfill title for sessions created before title generation was added
+    if (!this.sessionStore.getSessionTitle(session.id)) {
+      const msgs = this.sessionStore.getMessages(session.id, 1);
+      if (msgs.length > 0 && msgs[0].role === "user") {
+        this.sessionStore.updateSessionTitle(session.id, truncate(msgs[0].content, 60, true));
+      }
+    }
+
     // Bind memory store to the resumed session
     if (this._contextGate) {
       this._contextGate.onSessionStart(session.id);
@@ -211,8 +219,6 @@ export class Orchestrator {
         }
       }
 
-      const responseParts: string[] = [];
-
       // Per-turn tracking for tool call persistence
       let turnText: string[] = [];
       let turnToolCalls: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
@@ -233,7 +239,6 @@ export class Orchestrator {
               turnToolCalls = [];
               turnFlushed = false;
             }
-            responseParts.push(event.delta);
             turnText.push(event.delta);
           }
 
@@ -248,18 +253,21 @@ export class Orchestrator {
                 session.id,
                 "assistant",
                 turnText.join(""),
-                turnToolCalls.length > 0 ? JSON.stringify(turnToolCalls) : undefined,
-                undefined,
-                model,
+                {
+                  toolCalls: turnToolCalls.length > 0 ? JSON.stringify(turnToolCalls) : undefined,
+                  tokenCount: lastOutputTokens,
+                  model,
+                },
               );
               turnFlushed = true;
+              lastOutputTokens = undefined;
             }
             // Store tool result
             this.sessionStore.addMessage(
               session.id,
               "tool",
               event.result,
-              JSON.stringify({ callId: event.callId, isError: event.isError }),
+              { toolCalls: JSON.stringify({ callId: event.callId, isError: event.isError }) },
             );
           }
 
@@ -292,18 +300,14 @@ export class Orchestrator {
             session.id,
             "assistant",
             finalText,
-            undefined,
-            lastOutputTokens,
-            model,
+            { tokenCount: lastOutputTokens, model },
           );
         }
       }
 
       // Generate session title from first user message
       if (isFirstMessage) {
-        const firstLine = message.split("\n")[0].trim();
-        const title = firstLine.length > 60 ? firstLine.slice(0, 57) + "..." : firstLine;
-        this.sessionStore.updateSessionTitle(session.id, title);
+        this.sessionStore.updateSessionTitle(session.id, truncate(message, 60, true));
       }
     } finally {
       this._sendLock = false;

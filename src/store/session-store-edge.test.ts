@@ -59,7 +59,7 @@ describe("SessionStore — Edge Cases", () => {
         { id: "tc-2", name: "file_read", args: { path: "/tmp/data.csv" } },
       ]);
 
-      store.addMessage(session.id, "assistant", "Let me check", toolCalls);
+      store.addMessage(session.id, "assistant", "Let me check", { toolCalls });
       const messages = store.getMessages(session.id);
 
       expect(messages[0].toolCalls).toBe(toolCalls);
@@ -72,7 +72,7 @@ describe("SessionStore — Edge Cases", () => {
       const store = new SessionStore("agent1");
       const session = store.createSession("claude", "opus");
 
-      store.addMessage(session.id, "user", "Hello", undefined, 42);
+      store.addMessage(session.id, "user", "Hello", { tokenCount: 42 });
       const messages = store.getMessages(session.id);
 
       expect(messages[0].tokenCount).toBe(42);

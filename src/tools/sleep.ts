@@ -1,7 +1,7 @@
 import type { ToolDefinition } from "../providers/types.js";
 import type { SleepManager } from "../scheduler/sleep-manager.js";
 import type { TriggerExpression, MetricSource } from "../scheduler/triggers/types.js";
-import { toolError } from "../ui/format.js";
+import { toolError, formatError } from "../ui/format.js";
 
 export function createSleepTool(
   sleepManager: SleepManager,
@@ -54,18 +54,28 @@ Use logic "any" to wake on the first condition met, "all" to require all conditi
       const logic = (args.logic as "any" | "all") ?? "any";
       const deadlineMin = args.deadline_minutes as number | undefined;
 
-      const triggerConditions = conditions.map(parseTriggerCondition);
+      let triggerConditions: TriggerExpression[];
+      try {
+        triggerConditions = conditions.map(parseTriggerCondition);
+      } catch (err) {
+        return toolError(`Failed to parse wake conditions: ${formatError(err)}. Check the trigger type and required fields.`);
+      }
 
       const expression: TriggerExpression =
         triggerConditions.length === 1
           ? triggerConditions[0]
           : { op: logic === "all" ? "and" : "or", children: triggerConditions };
 
-      const session = await sleepManager.sleep({
-        reason,
-        expression,
-        deadlineMs: deadlineMin ? deadlineMin * 60 * 1000 : undefined,
-      });
+      let session;
+      try {
+        session = await sleepManager.sleep({
+          reason,
+          expression,
+          deadlineMs: deadlineMin ? deadlineMin * 60 * 1000 : undefined,
+        });
+      } catch (err) {
+        return toolError(`Failed to enter sleep: ${formatError(err)}`);
+      }
 
       return JSON.stringify({
         status: "sleeping",

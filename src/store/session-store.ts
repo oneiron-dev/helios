@@ -3,6 +3,17 @@ import { StmtCache } from "./database.js";
 import type { Session } from "../providers/types.js";
 import { truncate } from "../ui/format.js";
 
+export interface StoredToolCall {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+
+export interface StoredToolResultMeta {
+  callId: string;
+  isError?: boolean;
+}
+
 export interface StoredMessage {
   id: number;
   sessionId: string;
@@ -12,6 +23,18 @@ export interface StoredMessage {
   tokenCount?: number;
   model?: string;
   timestamp: number;
+}
+
+/** Parse the tool_calls column for an assistant message (array of tool calls). */
+export function parseToolCalls(msg: StoredMessage): StoredToolCall[] {
+  if (!msg.toolCalls) return [];
+  return JSON.parse(msg.toolCalls);
+}
+
+/** Parse the tool_calls column for a tool result message (call metadata). */
+export function parseToolResultMeta(msg: StoredMessage): StoredToolResultMeta {
+  if (!msg.toolCalls) return { callId: "" };
+  return JSON.parse(msg.toolCalls);
 }
 
 export interface SessionSummary {
@@ -118,9 +141,7 @@ export class SessionStore {
     sessionId: string,
     role: StoredMessage["role"],
     content: string,
-    toolCalls?: string,
-    tokenCount?: number,
-    model?: string,
+    opts?: { toolCalls?: string; tokenCount?: number; model?: string },
   ): void {
     this.stmt(
       `INSERT INTO messages (session_id, role, content, tool_calls, token_count, model, timestamp)
@@ -129,9 +150,9 @@ export class SessionStore {
       sessionId,
       role,
       content,
-      toolCalls ?? null,
-      tokenCount ?? null,
-      model ?? null,
+      opts?.toolCalls ?? null,
+      opts?.tokenCount ?? null,
+      opts?.model ?? null,
       Date.now(),
     );
   }
@@ -157,6 +178,11 @@ export class SessionStore {
       model: row.model as string | undefined,
       timestamp: row.timestamp as number,
     }));
+  }
+
+  getSessionTitle(sessionId: string): string | null {
+    const row = this.stmt("SELECT title FROM sessions WHERE id = ?").get(sessionId) as { title: string | null } | undefined;
+    return row?.title ?? null;
   }
 
   updateSessionTitle(sessionId: string, title: string): void {

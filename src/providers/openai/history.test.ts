@@ -420,7 +420,7 @@ describe("OpenAIProvider — History Deep Edge Cases", () => {
       const session = await provider.createSession({});
       store.addMessage(session.id, "system", "Sys");
       store.addMessage(session.id, "user", "User msg");
-      store.addMessage(session.id, "tool", "Tool msg", JSON.stringify({ callId: "tc1", isError: false }));
+      store.addMessage(session.id, "tool", "Tool msg", { toolCalls: JSON.stringify({ callId: "tc1", isError: false }) });
       store.addMessage(session.id, "assistant", "Asst msg");
 
       (provider as any).conversationHistory.delete(session.id);

@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import { EventEmitter } from "node:events";
-import { formatError } from "../ui/format.js";
+import { formatError, truncate } from "../ui/format.js";
 import type {
   SleepSession,
   Trigger,
@@ -154,7 +154,7 @@ export class SleepManager extends EventEmitter {
       if (procs.length > 0) {
         parts.push("", "Active tasks:");
         for (const p of procs) {
-          parts.push(`  ${p.machineId}:${p.pid} — ${p.command.slice(0, 60)}`);
+          parts.push(`  ${p.machineId}:${p.pid} — ${truncate(p.command, 60)}`);
         }
       }
     }

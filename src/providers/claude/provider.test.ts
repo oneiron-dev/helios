@@ -422,8 +422,8 @@ describe("ClaudeProvider", () => {
     it("resume reconstructs tool messages into history", async () => {
       const created = await provider.createSession({});
       store.addMessage(created.id, "user", "Run command");
-      store.addMessage(created.id, "assistant", "Running...", JSON.stringify([{ id: "tc1", name: "remote_exec", args: { command: "ls" } }]));
-      store.addMessage(created.id, "tool", "file.txt", JSON.stringify({ callId: "tc1", isError: false }));
+      store.addMessage(created.id, "assistant", "Running...", { toolCalls: JSON.stringify([{ id: "tc1", name: "remote_exec", args: { command: "ls" } }]) });
+      store.addMessage(created.id, "tool", "file.txt", { toolCalls: JSON.stringify({ callId: "tc1", isError: false }) });
       store.addMessage(created.id, "system", "system msg"); // system still skipped
 
       (provider as any).conversationHistory.delete(created.id);

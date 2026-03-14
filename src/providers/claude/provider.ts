@@ -25,7 +25,7 @@ import {
   type Attachment,
 } from "../types.js";
 import type { AuthManager } from "../auth/auth-manager.js";
-import { SessionStore, createEphemeralSession } from "../../store/session-store.js";
+import { SessionStore, createEphemeralSession, parseToolCalls, parseToolResultMeta } from "../../store/session-store.js";
 import { parseSSELines } from "../sse.js";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
@@ -92,7 +92,6 @@ export class ClaudeProvider implements ModelProvider {
   // CLI mode: correlate MCP tool executions back to tool_use IDs for UI updates
   // Keyed by original tool name → queue of call IDs (per-tool FIFO, not global FIFO)
   private cliPendingByName = new Map<string, string[]>();
-  private cachedMcpServer: { key: string; server: ReturnType<typeof createSdkMcpServer> } | null = null;
   private cliToolResults: Array<{ callId: string; result: string; isError?: boolean }> = [];
 
   constructor(authManager: AuthManager, preferredMode?: "cli" | "api", sessionStore?: SessionStore) {
@@ -196,9 +195,8 @@ export class ClaudeProvider implements ModelProvider {
         if (m.role === "user") {
           history.push({ role: "user", content: m.content });
         } else if (m.role === "assistant") {
-          if (m.toolCalls) {
-            // Reconstruct assistant message with tool_use blocks
-            const tcs = JSON.parse(m.toolCalls) as Array<{ id: string; name: string; args: Record<string, unknown> }>;
+          const tcs = parseToolCalls(m);
+          if (tcs.length > 0) {
             const content: AnthropicContent[] = [];
             if (m.content) content.push({ type: "text", text: m.content });
             for (const tc of tcs) {
@@ -209,11 +207,10 @@ export class ClaudeProvider implements ModelProvider {
             history.push({ role: "assistant", content: m.content });
           }
         } else if (m.role === "tool") {
-          // Tool results go inside a user-role message for Anthropic API
-          const meta = m.toolCalls ? JSON.parse(m.toolCalls) as { callId?: string; isError?: boolean } : {};
+          const meta = parseToolResultMeta(m);
           const toolResult: AnthropicContent = {
             type: "tool_result",
-            tool_use_id: meta.callId ?? "",
+            tool_use_id: meta.callId,
             content: m.content,
             is_error: meta.isError,
           };
@@ -809,12 +806,9 @@ export class ClaudeProvider implements ModelProvider {
   }
 
   private buildMcpServer(tools: ToolDefinition[]) {
-    // Filter once, reuse for both cache key and building
+    // Must create a fresh server per query — the SDK binds a transport on connect,
+    // and a server can't be connected to multiple transports simultaneously.
     const filtered = tools.filter((t) => t.name !== WEB_SEARCH_TOOL);
-    const key = filtered.map((t) => t.name).sort().join(",");
-    if (this.cachedMcpServer && this.cachedMcpServer.key === key) {
-      return this.cachedMcpServer.server;
-    }
 
     const mcpTools = filtered.map((t) =>
       sdkTool(
@@ -845,9 +839,7 @@ export class ClaudeProvider implements ModelProvider {
       ),
     );
 
-    const server = createSdkMcpServer({ name: "helios-tools", tools: mcpTools });
-    this.cachedMcpServer = { key, server };
-    return server;
+    return createSdkMcpServer({ name: "helios-tools", tools: mcpTools });
   }
 
   private buildZodSchema(

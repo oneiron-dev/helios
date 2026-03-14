@@ -15,7 +15,7 @@ import { TransientError, isTransient, sleep } from "../retry.js";
 import { formatError, withTimeout } from "../../ui/format.js";
 import { WEB_SEARCH_TOOL, debugLog } from "../../paths.js";
 import { parseSSELines } from "../sse.js";
-import { SessionStore, createEphemeralSession } from "../../store/session-store.js";
+import { SessionStore, createEphemeralSession, parseToolCalls, parseToolResultMeta } from "../../store/session-store.js";
 import { OpenAIOAuth } from "./oauth.js";
 
 const CODEX_API_URL =
@@ -179,8 +179,8 @@ export class OpenAIProvider implements ModelProvider {
             content: [{ type: "input_text", text: m.content }],
           });
         } else if (m.role === "assistant") {
-          if (m.toolCalls) {
-            const tcs = JSON.parse(m.toolCalls) as Array<{ id: string; name: string; args: Record<string, unknown> }>;
+          const tcs = parseToolCalls(m);
+          if (tcs.length > 0) {
             if (m.content) {
               history.push({
                 type: "message",
@@ -204,10 +204,10 @@ export class OpenAIProvider implements ModelProvider {
             });
           }
         } else if (m.role === "tool") {
-          const meta = m.toolCalls ? JSON.parse(m.toolCalls) as { callId?: string; isError?: boolean } : {};
+          const meta = parseToolResultMeta(m);
           history.push({
             type: "function_call_output",
-            call_id: meta.callId ?? "",
+            call_id: meta.callId,
             output: m.content,
           });
         }

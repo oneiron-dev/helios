@@ -20,6 +20,7 @@ import { StickyNotesPanel } from "./panels/sticky-notes.js";
 import { VERSION, checkForUpdate } from "../version.js";
 import { COMMANDS, handleSlashCommand } from "./commands.js";
 import { pollTaskStatuses, handleFinishedTasks, buildMonitorMessage } from "../core/task-poller.js";
+import { parseToolCalls, parseToolResultMeta } from "../store/session-store.js";
 import { formatDuration, formatError, truncate } from "./format.js";
 import type { Message, ToolData, TaskInfo } from "./types.js";
 import type { SlashCommand } from "./commands.js";
@@ -64,20 +65,49 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
     const session = orchestrator.activeSession;
     if (!session) return [];
     const stored = orchestrator.sessionStore.getMessages(session.id, 500);
-    return stored
-      .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool")
-      .map((m) => {
-        if (m.role === "tool" && m.toolCalls) {
-          const meta = JSON.parse(m.toolCalls) as { callId?: string; isError?: boolean };
-          return {
-            id: ++messageIdCounter,
-            role: "tool" as const,
-            content: m.content,
-            tool: { callId: meta.callId ?? "", name: "tool", args: {}, result: m.content, isError: meta.isError },
-          };
+    const msgs: Message[] = [];
+    // Index of tool calls by callId for correlating tool results
+    const toolCallIndex = new Map<string, { name: string; args: Record<string, unknown> }>();
+
+    for (const m of stored) {
+      if (m.role === "assistant") {
+        const tcs = parseToolCalls(m);
+        // Emit the text portion (if any)
+        if (m.content) {
+          msgs.push({ id: ++messageIdCounter, role: "assistant", content: m.content });
         }
-        return { id: ++messageIdCounter, role: m.role as Message["role"], content: m.content };
-      });
+        // Emit each tool call as a separate tool message (matches live streaming behavior)
+        for (const tc of tcs) {
+          toolCallIndex.set(tc.id, { name: tc.name, args: tc.args });
+          msgs.push({
+            id: ++messageIdCounter,
+            role: "tool",
+            content: "",
+            tool: { callId: tc.id, name: tc.name, args: tc.args },
+          });
+        }
+      } else if (m.role === "tool" && m.toolCalls) {
+        const meta = parseToolResultMeta(m);
+        // Find the matching tool call to get the real name/args
+        const parent = toolCallIndex.get(meta.callId);
+        const existing = msgs.find((msg) => msg.tool?.callId === meta.callId);
+        if (existing?.tool) {
+          // Attach result to the existing tool message
+          existing.tool.result = m.content;
+          existing.tool.isError = meta.isError;
+        } else {
+          msgs.push({
+            id: ++messageIdCounter,
+            role: "tool",
+            content: m.content,
+            tool: { callId: meta.callId, name: parent?.name ?? "tool", args: parent?.args ?? {}, result: m.content, isError: meta.isError },
+          });
+        }
+      } else if (m.role === "user") {
+        msgs.push({ id: ++messageIdCounter, role: "user", content: m.content });
+      }
+    }
+    return msgs;
   });
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
@@ -462,9 +492,16 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
     };
   }, [subagentManager]);
 
+  // Queue wake events that arrive while streaming, replay when streaming ends
+  const pendingWakeRef = useRef<string | null>(null);
+
   useEffect(() => {
     const onWake = (_session: unknown, _reason: string, wakeMessage: string) => {
-      if (isStreamingRef.current) return;
+      if (isStreamingRef.current) {
+        // Don't drop — queue for replay after streaming completes
+        pendingWakeRef.current = wakeMessage;
+        return;
+      }
       addMessageRef.current("system", "Agent waking up — trigger fired");
       handleSubmitRef.current(wakeMessage);
     };
@@ -474,6 +511,16 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
       sleepManager.removeListener("wake", onWake);
     };
   }, [sleepManager]);
+
+  // Replay queued wake event when streaming ends
+  useEffect(() => {
+    if (!isStreaming && pendingWakeRef.current) {
+      const wakeMessage = pendingWakeRef.current;
+      pendingWakeRef.current = null;
+      addMessageRef.current("system", "Agent waking up — trigger fired");
+      handleSubmitRef.current(wakeMessage);
+    }
+  }, [isStreaming]);
 
   const isSleeping = sleepManager.isSleeping;
 

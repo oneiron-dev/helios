@@ -5,6 +5,7 @@
 import { Effect } from "effect";
 import { Command, Options } from "@effect/cli";
 import { getAgentId } from "../paths.js";
+import { truncate } from "../ui/format.js";
 
 const limit = Options.integer("limit").pipe(
   Options.withAlias("n"),
@@ -47,7 +48,7 @@ export const sessions = Command.make(
           pad(String(s.messageCount), 6) +
           pad(formatCost(s.costUsd), 10) +
           pad(formatDate(s.lastActiveAt), 24) +
-          (s.title ?? s.firstUserMessage ?? "(no messages)").split("\n")[0].slice(0, 60),
+          truncate(s.title ?? s.firstUserMessage ?? "(no messages)", 60, true),
         );
       }
 

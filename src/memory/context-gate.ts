@@ -1,4 +1,5 @@
 import { getCheckpointThreshold } from "./token-estimator.js";
+import { truncate } from "../ui/format.js";
 import type { MemoryStore } from "./memory-store.js";
 import type { RemoteExecutor } from "../remote/executor.js";
 import type { MetricStore } from "../metrics/store.js";
@@ -82,7 +83,7 @@ export class ContextGate {
     const taskLines = tasks.map((t) => {
       const latestMetrics = this.getLatestMetrics(t.machineId, t.pid);
       return [
-        `${t.machineId}:${t.pid} — ${t.command.slice(0, 80)}`,
+        `${t.machineId}:${t.pid} — ${truncate(t.command, 80)}`,
         latestMetrics ? `  metrics: ${latestMetrics}` : null,
       ]
         .filter(Boolean)
