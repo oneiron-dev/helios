@@ -18,7 +18,7 @@ export const MessageLine = memo(function MessageLine({ message }: { message: Mes
         <Box marginTop={1}>
           <Text wrap="wrap">
             <Text color={C.primary} bold>{G.active} </Text>
-            <Text color={C.text}>{content}</Text>
+            <Text color={C.text}>{capContent(content)}</Text>
           </Text>
         </Box>
       );
@@ -53,17 +53,25 @@ export const MessageLine = memo(function MessageLine({ message }: { message: Mes
 });
 
 const MD_THROTTLE_MS = 150;
+/** Hard cap on content passed to the markdown renderer to prevent OOM in Ink's grapheme segmenter. */
+const MAX_RENDER_CHARS = 12_000;
+
+function capContent(text: string): string {
+  if (text.length <= MAX_RENDER_CHARS) return text;
+  return text.slice(0, MAX_RENDER_CHARS) + `\n\n… (${text.length - MAX_RENDER_CHARS} chars truncated)`;
+}
 
 function AssistantMessage({ content }: { content: string }) {
-  const [rendered, setRendered] = useState(() => renderMarkdown(content));
+  const capped = capContent(content);
+  const [rendered, setRendered] = useState(() => renderMarkdown(capped));
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastRenderTimeRef = useRef(Date.now());
-  const lastContentRef = useRef(content);
+  const lastContentRef = useRef(capped);
 
   useEffect(() => {
     // Skip if content hasn't changed (avoids double-render on mount)
-    if (lastContentRef.current === content && rendered) return;
-    lastContentRef.current = content;
+    if (lastContentRef.current === capped && rendered) return;
+    lastContentRef.current = capped;
 
     if (timerRef.current) clearTimeout(timerRef.current);
 
@@ -71,18 +79,18 @@ function AssistantMessage({ content }: { content: string }) {
 
     if (elapsed >= MD_THROTTLE_MS) {
       lastRenderTimeRef.current = Date.now();
-      setRendered(renderMarkdown(content));
+      setRendered(renderMarkdown(capped));
     } else {
       timerRef.current = setTimeout(() => {
         lastRenderTimeRef.current = Date.now();
-        setRendered(renderMarkdown(content));
+        setRendered(renderMarkdown(capped));
       }, MD_THROTTLE_MS - elapsed);
     }
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [content]);
+  }, [capped]);
 
   return (
     <Box paddingLeft={2}>
@@ -215,9 +223,14 @@ function ExecDisplay({ tool }: { tool: ToolData }) {
   );
 }
 
-function trimOutput(text: string, maxLines: number): string {
-  const lines = text.trimEnd().split("\n");
-  if (lines.length <= maxLines) return text.trimEnd();
+/** Cap output to maxLines AND maxChars to prevent Ink's grapheme segmenter from OOMing. */
+function trimOutput(text: string, maxLines: number, maxChars = 4000): string {
+  // Hard character limit first — a single line can be megabytes
+  let capped = text.length > maxChars
+    ? text.slice(0, maxChars) + `\n… (${text.length - maxChars} chars truncated)`
+    : text;
+  const lines = capped.trimEnd().split("\n");
+  if (lines.length <= maxLines) return capped.trimEnd();
   const kept = lines.slice(-maxLines);
   return `… ${lines.length - maxLines} lines hidden …\n${kept.join("\n")}`;
 }
@@ -654,12 +667,15 @@ function SubagentResultDisplay({ tool }: { tool: ToolData }) {
 // ── Generic fallback ─────────────────────────────────────────────────
 
 function GenericToolDisplay({ tool }: { tool: ToolData }) {
-  const argStr = Object.entries(tool.args)
-    .map(([k, v]) => {
-      const val = typeof v === "string" ? truncate(v, 50) : JSON.stringify(v);
-      return `${k}: ${val}`;
-    })
-    .join("  ");
+  const argStr = truncate(
+    Object.entries(tool.args)
+      .map(([k, v]) => {
+        const val = typeof v === "string" ? truncate(v, 50) : truncate(JSON.stringify(v), 50);
+        return `${k}: ${val}`;
+      })
+      .join("  "),
+    200,
+  );
 
   return (
     <Box flexDirection="column" paddingLeft={2}>
