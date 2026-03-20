@@ -1,9 +1,7 @@
 import { Box, Text } from "ink";
 
 // ─── Light-theme detection ──────────────────────────
-function isLightTerminal(): boolean {
-  if (process.env.HELIOS_LIGHT === "1") return true;
-  if (process.env.HELIOS_LIGHT === "0") return false;
+function detectLightTerminal(): boolean {
   // COLORFGBG is "fg;bg" — bg > 8 means light background
   const cfg = process.env.COLORFGBG;
   if (cfg) {
@@ -13,26 +11,77 @@ function isLightTerminal(): boolean {
   return false;
 }
 
-export const IS_LIGHT = isLightTerminal();
+export type ThemeMode = "light" | "dark" | "auto";
 
-// ─── Colors ──────────────────────────────────────────
-export const C = IS_LIGHT
-  ? {
-      primary: "#cc3300",
-      bright: "#ff8800",
-      text: "black" as const,
-      dim: "blackBright" as const,   // ANSI "bright black" = dark gray
-      error: "red" as const,
-      success: "green" as const,
-    }
-  : {
-      primary: "yellow" as const,
-      bright: "yellowBright" as const,
-      text: "white" as const,
-      dim: "gray" as const,
-      error: "red" as const,
-      success: "green" as const,
-    };
+function resolveLight(mode: ThemeMode): boolean {
+  if (mode === "light") return true;
+  if (mode === "dark") return false;
+  // auto
+  if (process.env.HELIOS_LIGHT === "1") return true;
+  if (process.env.HELIOS_LIGHT === "0") return false;
+  return detectLightTerminal();
+}
+
+const LIGHT_COLORS = {
+  primary: "#cc3300" as string,
+  bright: "#ff8800" as string,
+  text: "black" as string,
+  dim: "blackBright" as string,
+  error: "red" as string,
+  success: "green" as string,
+};
+
+const DARK_COLORS = {
+  primary: "yellow" as string,
+  bright: "yellowBright" as string,
+  text: "white" as string,
+  dim: "gray" as string,
+  error: "red" as string,
+  success: "green" as string,
+};
+
+let _themeMode: ThemeMode = "auto";
+export let IS_LIGHT = resolveLight(_themeMode);
+
+// ─── Metric Colors ───────────────────────────────────
+const LIGHT_METRIC_COLORS = [
+  "blue", "cyan", "green", "magenta", "red",
+  "blueBright", "black", "yellow", "cyan", "green",
+];
+const DARK_METRIC_COLORS = [
+  "yellowBright", "cyanBright", "greenBright", "magentaBright", "redBright",
+  "blueBright", "whiteBright", "yellow", "cyan", "green",
+];
+export const METRIC_COLORS: string[] = IS_LIGHT
+  ? [...LIGHT_METRIC_COLORS]
+  : [...DARK_METRIC_COLORS];
+
+// ─── Colors (mutable for runtime theme switching) ────
+export let C = IS_LIGHT ? { ...LIGHT_COLORS } : { ...DARK_COLORS };
+
+/** Switch theme at runtime. */
+export function setTheme(mode: ThemeMode): void {
+  _themeMode = mode;
+  IS_LIGHT = resolveLight(mode);
+  const src = IS_LIGHT ? LIGHT_COLORS : DARK_COLORS;
+  Object.assign(C, src);
+  Object.assign(METRIC_COLORS, IS_LIGHT ? LIGHT_METRIC_COLORS : DARK_METRIC_COLORS);
+  // Update STATUS_STYLE colors that reference C
+  STATUS_STYLE.accepted.color = C.success;
+  STATUS_STYLE.screening.color = C.dim;
+  STATUS_STYLE.running.color = C.primary;
+  STATUS_STYLE.pending.color = C.dim;
+  STATUS_STYLE.done.color = C.success;
+  STATUS_STYLE.complete.color = C.success;
+  STATUS_STYLE.error.color = C.error;
+  STATUS_STYLE.rejected.color = C.error;
+  STATUS_STYLE.keep.color = C.success;
+  STATUS_STYLE.revert.color = C.error;
+}
+
+export function currentThemeMode(): ThemeMode {
+  return _themeMode;
+}
 
 // ─── Glyphs ──────────────────────────────────────────
 export const G = {
@@ -97,33 +146,6 @@ export function statusGlyph(status: string): string {
 export function statusColor(status: string): string {
   return STATUS_STYLE[status]?.color ?? C.dim;
 }
-
-// ─── Metric Colors ───────────────────────────────────
-export const METRIC_COLORS = IS_LIGHT
-  ? ([
-      "blue",
-      "cyan",
-      "green",
-      "magenta",
-      "red",
-      "blueBright",
-      "black",
-      "yellow",
-      "cyan",
-      "green",
-    ] as const)
-  : ([
-      "yellowBright",
-      "cyanBright",
-      "greenBright",
-      "magentaBright",
-      "redBright",
-      "blueBright",
-      "whiteBright",
-      "yellow",
-      "cyan",
-      "green",
-    ] as const);
 
 export function nameHash(s: string): number {
   let h = 0;

@@ -17,7 +17,8 @@ import { join } from "node:path";
 import { formatError, formatMetricValue, formatDuration } from "./format.js";
 import { launchProseRun, type ProseSidecar } from "../prose/launcher.js";
 import { executeAction } from "../experiments/action-executor.js";
-import { statusGlyph } from "./theme.js";
+import { statusGlyph, setTheme, currentThemeMode, IS_LIGHT } from "./theme.js";
+import type { ThemeMode } from "./theme.js";
 import { sparkline } from "./panels/metrics-dashboard.js";
 import { ClaudeProvider } from "../providers/claude/provider.js";
 import { loadPreferences, savePreferences } from "../store/preferences.js";
@@ -102,6 +103,7 @@ export const COMMANDS: SlashCommand[] = [
   { name: "experiments", description: "Open experiment dashboard" },
   { name: "experiments", args: "best", description: "Show the best experiment" },
   { name: "experiments", args: "action <name> <id>", description: "Run adapter action on experiment" },
+  { name: "theme", args: "<light|dark|auto>", description: "Switch color theme (auto detects terminal)" },
   { name: "clear", description: "Clear conversation history" },
   { name: "quit", description: "Exit Helios" },
 ];
@@ -201,6 +203,9 @@ export async function handleSlashCommand(
       break;
     case "experiments":
       await cmdExperiments(args, ctx);
+      break;
+    case "theme":
+      cmdTheme(args, ctx);
       break;
     case "clear":
       ctx.setMessages([]);
@@ -555,6 +560,16 @@ function cmdStatus(ctx: CommandContext): void {
       `Cost: $${orchestrator.totalCostUsd.toFixed(4)}`,
     ].join("\n"),
   );
+}
+
+function cmdTheme(args: string[], ctx: CommandContext): void {
+  const mode = args[0] as ThemeMode | undefined;
+  if (!mode || !["light", "dark", "auto"].includes(mode)) {
+    ctx.addMessage("system", `Current theme: ${currentThemeMode()}\nUsage: /theme <light|dark|auto>`);
+    return;
+  }
+  setTheme(mode);
+  ctx.addMessage("system", `Theme set to ${mode}${mode === "auto" ? " (detected: " + (IS_LIGHT ? "light" : "dark") + ")" : ""}`);
 }
 
 function cmdSticky(args: string[], ctx: CommandContext): void {
