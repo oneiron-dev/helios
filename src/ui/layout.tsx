@@ -284,11 +284,11 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
       setActiveOverlay((prev) => prev === "metrics" ? "none" : "metrics");
       return;
     }
-    if (key.ctrl && input === "r") {
+    if (key.ctrl && input === "p") {
       setActiveOverlay((prev) => prev === "prose" ? "none" : "prose");
       return;
     }
-    if (key.ctrl && input === "d") {
+    if (key.ctrl && input === "e") {
       setActiveOverlay((prev) => prev === "experiments" ? "none" : "experiments");
       return;
     }
@@ -566,60 +566,66 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
 
   const { height, width } = useScreenSize();
 
-  // ── Fullscreen overlays ───────────────────────────────────────
-  if (activeOverlay === "tasks") {
-    return (
-      <Box flexDirection="column" height={height} width={width}>
+  // ── Overlay content (rendered in place of main area) ─────────
+  const overlayContent = (() => {
+    if (activeOverlay === "tasks") {
+      return (
         <TaskOverlay
           tasks={tasks}
           executor={executor}
           width={width}
-          height={height}
+          height={height - 3}
           onClose={() => setActiveOverlay("none")}
         />
-      </Box>
-    );
-  }
-
-  if (activeOverlay === "metrics") {
-    return (
-      <Box flexDirection="column" height={height} width={width}>
+      );
+    }
+    if (activeOverlay === "metrics") {
+      return (
         <MetricsOverlay
           metricData={metricData}
           metricStore={metricStore}
           width={width}
-          height={height}
+          height={height - 3}
           onClose={() => setActiveOverlay("none")}
         />
-      </Box>
-    );
-  }
-
-  if (activeOverlay === "prose" && runtime.proseWatcher) {
-    return (
-      <Box flexDirection="column" height={height} width={width}>
+      );
+    }
+    if (activeOverlay === "prose") {
+      if (!runtime.proseWatcher) {
+        return (
+          <Box flexGrow={1} alignItems="center" justifyContent="center">
+            <Text color={C.dim}>No Prose watcher active. Start a .prose run to use this overlay.</Text>
+          </Box>
+        );
+      }
+      return (
         <ProseOverlay
           proseWatcher={runtime.proseWatcher}
           width={width}
-          height={height}
+          height={height - 3}
           onClose={() => setActiveOverlay("none")}
         />
-      </Box>
-    );
-  }
-
-  if (activeOverlay === "experiments" && runtime.experimentAdapter) {
-    return (
-      <Box flexDirection="column" height={height} width={width}>
+      );
+    }
+    if (activeOverlay === "experiments") {
+      if (!runtime.experimentAdapter) {
+        return (
+          <Box flexGrow={1} alignItems="center" justifyContent="center">
+            <Text color={C.dim}>No experiment adapter detected. Configure in helios.json or place artifacts in a recognized directory.</Text>
+          </Box>
+        );
+      }
+      return (
         <ExperimentsOverlay
           adapter={runtime.experimentAdapter}
           width={width}
-          height={height}
+          height={height - 3}
           onClose={() => setActiveOverlay("none")}
         />
-      </Box>
-    );
-  }
+      );
+    }
+    return null;
+  })();
 
   // ── Normal layout ─────────────────────────────────────────────
   return (
@@ -632,65 +638,73 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           )}
         </Box>
 
-        <Box flexShrink={0} flexDirection="row">
-          <Box flexGrow={1} flexBasis={0} flexDirection="column" paddingX={1}>
-            <MetricsDashboard metricData={metricData} width={Math.floor((width - 1) / 2) - 2} />
+        {overlayContent ? (
+          <Box flexGrow={1} flexShrink={1} flexDirection="column">
+            {overlayContent}
           </Box>
-          <Box width={1} flexDirection="column" alignItems="center">
-            <Text color={C.primary} wrap="truncate">
-              {verticalSeparator}
-            </Text>
-          </Box>
-          <Box flexGrow={1} flexBasis={0} flexDirection="column" paddingX={1}>
-            <TaskListPanel tasks={tasks} resources={resourceData} width={Math.floor((width - 1) / 2) - 2} />
-          </Box>
-        </Box>
+        ) : (
+          <>
+            <Box flexShrink={0} flexDirection="row">
+              <Box flexGrow={1} flexBasis={0} flexDirection="column" paddingX={1}>
+                <MetricsDashboard metricData={metricData} width={Math.floor((width - 1) / 2) - 2} />
+              </Box>
+              <Box width={1} flexDirection="column" alignItems="center">
+                <Text color={C.primary} wrap="truncate">
+                  {verticalSeparator}
+                </Text>
+              </Box>
+              <Box flexGrow={1} flexBasis={0} flexDirection="column" paddingX={1}>
+                <TaskListPanel tasks={tasks} resources={resourceData} width={Math.floor((width - 1) / 2) - 2} />
+              </Box>
+            </Box>
 
-        <Box flexShrink={0}><HRule /></Box>
+            <Box flexShrink={0}><HRule /></Box>
 
-        {/* Chat area — ScrollView handles clipping and scrolling */}
-        <Box flexGrow={1} flexShrink={1} flexDirection="row">
-          <Box flexGrow={1} flexShrink={1}>
-            {messages.length === 0 && !headless ? (
-              <Box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column">
-                <Text color={C.primary} bold>{G.brand}</Text>
-                <Text color={C.primary} bold>H E L I O S</Text>
-                <Text color={C.dim}>autonomous ml research</Text>
-                <Text color={C.dim} dimColor>v{VERSION}</Text>
-                <Text color={C.dim} dimColor>{""}</Text>
-                <Text color={C.dim} dimColor>/help for commands</Text>
-                {updateAvailable && (
-                  <Box marginTop={1}>
-                    <Text color={C.bright}>update available: v{updateAvailable} — npm i -g helios</Text>
+            {/* Chat area */}
+            <Box flexGrow={1} flexShrink={1} flexDirection="row">
+              <Box flexGrow={1} flexShrink={1}>
+                {messages.length === 0 && !headless ? (
+                  <Box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column">
+                    <Text color={C.primary} bold>{G.brand}</Text>
+                    <Text color={C.primary} bold>H E L I O S</Text>
+                    <Text color={C.dim}>autonomous ml research</Text>
+                    <Text color={C.dim} dimColor>v{VERSION}</Text>
+                    <Text color={C.dim} dimColor>{""}</Text>
+                    <Text color={C.dim} dimColor>/help for commands</Text>
+                    {updateAvailable && (
+                      <Box marginTop={1}>
+                        <Text color={C.bright}>update available: v{updateAvailable} — npm i -g helios</Text>
+                      </Box>
+                    )}
+                  </Box>
+                ) : (
+                  <Box
+                    ref={viewportRef}
+                    overflow="hidden"
+                    flexGrow={1}
+                    flexShrink={1}
+                    flexDirection="column"
+                    justifyContent="flex-end"
+                  >
+                    <Box
+                      ref={contentRef}
+                      flexDirection="column"
+                      flexShrink={0}
+                      marginBottom={scrollUp > 0 ? -scrollUp : undefined}
+                    >
+                      <MessageList messages={messages} isStreaming={isStreaming} />
+                    </Box>
                   </Box>
                 )}
               </Box>
-            ) : (
-              <Box
-                ref={viewportRef}
-                overflow="hidden"
-                flexGrow={1}
-                flexShrink={1}
-                flexDirection="column"
-                justifyContent="flex-end"
-              >
-                <Box
-                  ref={contentRef}
-                  flexDirection="column"
-                  flexShrink={0}
-                  marginBottom={scrollUp > 0 ? -scrollUp : undefined}
-                >
-                  <MessageList messages={messages} isStreaming={isStreaming} />
+              {stickyNotes.length > 0 && (
+                <Box flexShrink={0}>
+                  <StickyNotesPanel notes={stickyNotes} width={Math.min(30, Math.floor(width * 0.25))} />
                 </Box>
-              </Box>
-            )}
-          </Box>
-          {stickyNotes.length > 0 && (
-            <Box flexShrink={0}>
-              <StickyNotesPanel notes={stickyNotes} width={Math.min(30, Math.floor(width * 0.25))} />
+              )}
             </Box>
-          )}
-        </Box>
+          </>
+        )}
 
         {!headless && <Box flexShrink={0}><KeyHintRule /></Box>}
         <Box flexShrink={0}><StatusBar orchestrator={orchestrator} sleepManager={sleepManager} monitorManager={monitorManager} isStreaming={isStreaming} streamingStartedAt={streamingStartedAt} /></Box>

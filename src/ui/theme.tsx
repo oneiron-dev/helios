@@ -1,14 +1,38 @@
 import { Box, Text } from "ink";
 
+// ─── Light-theme detection ──────────────────────────
+function isLightTerminal(): boolean {
+  if (process.env.HELIOS_LIGHT === "1") return true;
+  if (process.env.HELIOS_LIGHT === "0") return false;
+  // COLORFGBG is "fg;bg" — bg > 8 means light background
+  const cfg = process.env.COLORFGBG;
+  if (cfg) {
+    const bg = Number(cfg.split(";").pop());
+    if (!Number.isNaN(bg) && bg > 8) return true;
+  }
+  return false;
+}
+
+export const IS_LIGHT = isLightTerminal();
+
 // ─── Colors ──────────────────────────────────────────
-export const C = {
-  primary: "yellow" as const,
-  bright: "yellowBright" as const,
-  text: "white" as const,
-  dim: "gray" as const,
-  error: "red" as const,
-  success: "green" as const,
-};
+export const C = IS_LIGHT
+  ? {
+      primary: "#cc3300",
+      bright: "#ff8800",
+      text: "black" as const,
+      dim: "blackBright" as const,   // ANSI "bright black" = dark gray
+      error: "red" as const,
+      success: "green" as const,
+    }
+  : {
+      primary: "yellow" as const,
+      bright: "yellowBright" as const,
+      text: "white" as const,
+      dim: "gray" as const,
+      error: "red" as const,
+      success: "green" as const,
+    };
 
 // ─── Glyphs ──────────────────────────────────────────
 export const G = {
@@ -59,18 +83,31 @@ export function statusColor(status: string): string {
 }
 
 // ─── Metric Colors ───────────────────────────────────
-export const METRIC_COLORS = [
-  "yellowBright",
-  "cyanBright",
-  "greenBright",
-  "magentaBright",
-  "redBright",
-  "blueBright",
-  "whiteBright",
-  "yellow",
-  "cyan",
-  "green",
-] as const;
+export const METRIC_COLORS = IS_LIGHT
+  ? ([
+      "blue",
+      "cyan",
+      "green",
+      "magenta",
+      "red",
+      "blueBright",
+      "black",
+      "yellow",
+      "cyan",
+      "green",
+    ] as const)
+  : ([
+      "yellowBright",
+      "cyanBright",
+      "greenBright",
+      "magentaBright",
+      "redBright",
+      "blueBright",
+      "whiteBright",
+      "yellow",
+      "cyan",
+      "green",
+    ] as const);
 
 export function nameHash(s: string): number {
   let h = 0;
