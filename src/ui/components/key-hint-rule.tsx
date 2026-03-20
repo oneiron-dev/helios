@@ -5,7 +5,9 @@ import { C, G } from "../theme.js";
 const HINTS = [
   { key: "esc", label: "interrupt" },
   { key: "^t", label: "tasks" },
-  { key: "^g", label: "metrics" },
+  { key: "^g", label: "graphs" },
+  { key: "^p", label: "prose" },
+  { key: "^e", label: "experiments" },
 ];
 
 export const KeyHintRule = memo(function KeyHintRule() {

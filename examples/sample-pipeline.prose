@@ -1,0 +1,21 @@
+# Sample Pipeline
+# A simple 5-step program for testing Helios prose monitoring.
+# Exercises: sequential steps, a parallel block, and completion.
+
+# Step 1: Gather project info
+session "Read the current directory structure and list the top-level files. Summarize what kind of project this is in 2-3 sentences."
+
+# Step 2: Parallel analysis
+parallel:
+  structure = session "Analyze the project structure: list key directories, entry points, and configuration files."
+  deps = session "List the project dependencies and their purposes. Note any outdated or unusual choices."
+
+# Step 3: Synthesize findings
+session "Combine the structure analysis and dependency review into a brief project health summary."
+  context: { structure, deps }
+
+# Step 4: Generate recommendations
+session "Based on the project health summary, suggest 3 concrete improvements ranked by impact. Be specific — reference actual files and dependencies."
+
+# Step 5: Write report
+session "Write a final 1-page project review report in markdown. Include: overview, health assessment, and the top 3 recommendations."
