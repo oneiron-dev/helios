@@ -98,6 +98,7 @@ It will write training scripts, launch runs, parse metrics from stdout, set up m
 | `/prose launch <file.prose>` | Launch a Prose pipeline |
 | `/experiments` | Open experiment dashboard |
 | `/experiments best` | Show the best experiment |
+| `/theme <light\|dark\|auto>` | Switch color theme (auto detects terminal) |
 | `/status` | Provider, model, cost, state |
 | `/clear` | Clear conversation |
 | `/help` | Show all commands |
