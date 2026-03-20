@@ -409,6 +409,7 @@ function LoomRow({ row, isSelected, width }: {
 // ─── Helpers ─────────────────────────────────────────
 
 function resolveColumnValue(key: string, experiment: Experiment): unknown {
+  if (key === "id") return experiment.id;
   if (key === "status") return experiment.status;
   if (key === "compositeScore") return experiment.compositeScore;
   if (key in experiment.metrics) return experiment.metrics[key];
