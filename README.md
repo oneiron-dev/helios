@@ -93,6 +93,11 @@ It will write training scripts, launch runs, parse metrics from stdout, set up m
 | `/memory [path]` | Browse the agent's memory tree |
 | `/skills` | List available skills |
 | `/hub [connect\|disconnect\|status]` | AgentHub collaboration |
+| `/prose runs` | List recent Prose pipeline runs |
+| `/prose tail <run-id>` | Open Prose run state overlay |
+| `/prose launch <file.prose>` | Launch a Prose pipeline |
+| `/experiments` | Open experiment dashboard |
+| `/experiments best` | Show the best experiment |
 | `/status` | Provider, model, cost, state |
 | `/clear` | Clear conversation |
 | `/help` | Show all commands |
@@ -104,7 +109,9 @@ Skills are also invocable as slash commands — e.g. `/discover`, `/paper <url>`
 | Key | Action |
 |---|---|
 | `Ctrl+T` | Task output overlay |
-| `Ctrl+G` | Metrics overlay |
+| `Ctrl+G` | Graphs (metrics) overlay |
+| `Ctrl+P` | Prose run overlay |
+| `Ctrl+E` | Experiments overlay |
 | `Escape` | Interrupt / close overlay |
 | `Ctrl+C` | Interrupt / exit |
 | `Tab` | Autocomplete command |
@@ -115,6 +122,35 @@ Skills are also invocable as slash commands — e.g. `/discover`, `/paper <url>`
 | `Ctrl+U` | Clear line |
 
 Mouse scroll works in terminals that support SGR mouse reporting.
+
+## Light Terminal Theme
+
+Helios auto-detects light terminal backgrounds via the `COLORFGBG` environment variable and switches to a dark-on-light color palette. You can also force it:
+
+```bash
+HELIOS_LIGHT=1 helios     # force light theme
+HELIOS_LIGHT=0 helios     # force dark theme
+```
+
+## Unicode Fallback
+
+If your terminal doesn't render Unicode glyphs correctly:
+
+```bash
+HELIOS_ASCII=1 helios
+```
+
+## Prose Pipelines
+
+Helios can monitor [OpenProse](https://github.com/oneiron-dev/openprose) `.prose` pipeline runs. A sample pipeline is included at `examples/sample-pipeline.prose`.
+
+The Prose overlay (`Ctrl+P`) shows live step status, and the dashboard panels cycle between metrics/tasks, prose runs, and experiment leaderboards.
+
+## Experiment Tracking
+
+Helios supports pluggable experiment adapters. The built-in `arena-sweep` adapter reads experiment artifacts from a directory structure, and the `autoresearch-tsv` adapter reads NER results from TSV files with lineage tracking.
+
+The experiments overlay (`Ctrl+E`) shows experiment results, lineage trees, and available actions (keep/revert/branch).
 
 ## Remote Machines
 
@@ -278,6 +314,7 @@ The agent has access to 37 tools (33 core + 4 conditional AgentHub tools):
 | `sleep` | Sleep with composable triggers (timer, process exit, metric threshold, file change, resource usage) |
 | `hub_push` / `hub_fetch` / `hub_log` / `hub_leaves` / `hub_diff` | AgentHub git collaboration (if configured) |
 | `hub_post` / `hub_read` / `hub_reply` | AgentHub discussion (if configured) |
+| `spawn_subagent` / `subagent_status` / `subagent_result` | Launch and manage subagents |
 
 ## Data
 
