@@ -121,6 +121,7 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
   const [metricData, setMetricData] = useState<Map<string, number[]>>(new Map());
   const [stickyNotes, setStickyNotes] = useState<StickyNote[]>([]);
   const [activeOverlay, setActiveOverlay] = useState<"none" | "tasks" | "metrics" | "prose" | "experiments">("none");
+  const [focusProseRunId, setFocusProseRunId] = useState<string | undefined>();
   const [resourceData, setResourceData] = useState<Map<string, import("../metrics/resources.js").MachineResources>>(new Map());
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
 
@@ -152,6 +153,8 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
             machineId: proc.machineId,
             pid: proc.pid,
             startedAt: proc.startedAt,
+            groupId: proc.groupId,
+            groupLabel: proc.groupLabel,
           };
         });
 
@@ -368,6 +371,8 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           stickyManager, setStickyNotes, executor, skillRegistry: runtime.skillRegistry,
           proseWatcher: runtime.proseWatcher,
           experimentAdapter: runtime.experimentAdapter,
+          proseRunConfig: runtime.proseRunConfig,
+          setFocusProseRunId,
           setActiveOverlay,
           restoreMessages: (msgs) =>
             msgs.map((m) => ({
@@ -603,7 +608,8 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           proseWatcher={runtime.proseWatcher}
           width={width}
           height={height - 3}
-          onClose={() => setActiveOverlay("none")}
+          focusRunId={focusProseRunId}
+          onClose={() => { setActiveOverlay("none"); setFocusProseRunId(undefined); }}
         />
       );
     }
@@ -618,6 +624,7 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
       return (
         <ExperimentsOverlay
           adapter={runtime.experimentAdapter}
+          executor={executor}
           width={width}
           height={height - 3}
           onClose={() => setActiveOverlay("none")}

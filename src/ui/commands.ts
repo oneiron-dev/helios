@@ -10,8 +10,13 @@ import type { ReasoningEffort } from "../providers/types.js";
 import type { SessionSummary } from "../store/session-store.js";
 import type { Message } from "./types.js";
 import type { ProseWatcher } from "../prose/watcher.js";
+import type { ProseRunConfig } from "../prose/types.js";
 import type { ExperimentAdapter } from "../experiments/types.js";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { formatError, formatMetricValue, formatDuration } from "./format.js";
+import { launchProseRun, type ProseSidecar } from "../prose/launcher.js";
+import { executeAction } from "../experiments/action-executor.js";
 import { statusGlyph } from "./theme.js";
 import { sparkline } from "./panels/metrics-dashboard.js";
 import { ClaudeProvider } from "../providers/claude/provider.js";
@@ -57,7 +62,9 @@ export interface CommandContext {
   skillRegistry?: SkillRegistry;
   proseWatcher?: ProseWatcher;
   experimentAdapter?: ExperimentAdapter;
+  proseRunConfig?: ProseRunConfig;
   setActiveOverlay?: (overlay: "none" | "tasks" | "metrics" | "prose" | "experiments") => void;
+  setFocusProseRunId?: (id: string | undefined) => void;
   /** Build Message[] from stored messages (needs access to the id counter). */
   restoreMessages: (messages: Array<{ role: string; content: string }>) => Message[];
 }
@@ -88,8 +95,13 @@ export const COMMANDS: SlashCommand[] = [
   { name: "status", description: "Show provider, model, state, and cost" },
   { name: "prose", args: "runs", description: "List recent Prose runs" },
   { name: "prose", args: "tail <run-id>", description: "Open run state overlay" },
+  { name: "prose", args: "run <file.prose>", description: "Launch a Prose program" },
+  { name: "prose", args: "stop [run-id]", description: "Stop a running Prose run" },
+  { name: "prose", args: "resume <run-id>", description: "Resume a Helios-launched run" },
+  { name: "prose", args: "open <run-id>", description: "Focus run in prose overlay" },
   { name: "experiments", description: "Open experiment dashboard" },
   { name: "experiments", args: "best", description: "Show the best experiment" },
+  { name: "experiments", args: "action <name> <id>", description: "Run adapter action on experiment" },
   { name: "clear", description: "Clear conversation history" },
   { name: "quit", description: "Exit Helios" },
 ];
@@ -185,10 +197,10 @@ export async function handleSlashCommand(
       cmdHub(args, ctx);
       break;
     case "prose":
-      cmdProse(args, ctx);
+      await cmdProse(args, ctx);
       break;
     case "experiments":
-      cmdExperiments(args, ctx);
+      await cmdExperiments(args, ctx);
       break;
     case "clear":
       ctx.setMessages([]);
@@ -691,7 +703,7 @@ function cmdHub(args: string[], ctx: CommandContext): void {
   );
 }
 
-function cmdProse(args: string[], ctx: CommandContext): void {
+async function cmdProse(args: string[], ctx: CommandContext): Promise<void> {
   const { addMessage, proseWatcher, setActiveOverlay } = ctx;
 
   if (!proseWatcher) {
@@ -704,7 +716,7 @@ function cmdProse(args: string[], ctx: CommandContext): void {
   if (!subCmd || subCmd === "runs") {
     const runs = proseWatcher.getRuns();
     if (runs.length === 0) {
-      addMessage("system", "No Prose runs found.\nUse `prose run <file.prose>` to start one.");
+      addMessage("system", "No Prose runs found.\nUse /prose run <file.prose> to start one.");
       return;
     }
     const lines = runs.map((r) => {
@@ -731,10 +743,113 @@ function cmdProse(args: string[], ctx: CommandContext): void {
     return;
   }
 
-  addMessage("system", "Usage: /prose [runs | tail <run-id>]");
+  if (subCmd === "run") {
+    const file = args[1];
+    if (!file) {
+      addMessage("system", "Usage: /prose run <file.prose>");
+      return;
+    }
+    if (!existsSync(file)) {
+      addMessage("system", `File not found: ${file}`);
+      return;
+    }
+    if (!ctx.executor || !ctx.proseRunConfig) {
+      addMessage("system", "Executor or prose config not available.");
+      return;
+    }
+    try {
+      const { runId } = await launchProseRun(file, ctx.executor, ctx.proseRunConfig, { cwd: process.cwd() });
+      addMessage("system", `Prose run launched: ${runId}`);
+      setActiveOverlay?.("prose");
+    } catch (err) {
+      addMessage("system", `Failed to launch: ${formatError(err)}`);
+    }
+    return;
+  }
+
+  if (subCmd === "stop") {
+    const runId = args[1];
+    const run = runId ? proseWatcher.getRun(runId) : proseWatcher.getActiveRuns()[0];
+    if (!run) {
+      addMessage("system", runId ? `Run "${runId}" not found.` : "No active runs.");
+      return;
+    }
+    if (!run.pid) {
+      addMessage("system", `Run "${run.id}" has no tracked PID.`);
+      return;
+    }
+    if (!ctx.executor) {
+      addMessage("system", "Executor not available.");
+      return;
+    }
+    try {
+      await ctx.executor.exec("local", `kill -TERM ${run.pid}`);
+      addMessage("system", `Sent SIGTERM to run "${run.id}" (pid ${run.pid}).`);
+    } catch (err) {
+      addMessage("system", `Failed to stop: ${formatError(err)}`);
+    }
+    return;
+  }
+
+  if (subCmd === "resume") {
+    const runId = args[1];
+    if (!runId) {
+      addMessage("system", "Usage: /prose resume <run-id>");
+      return;
+    }
+    const run = proseWatcher.getRun(runId);
+    if (!run) {
+      addMessage("system", `Run "${runId}" not found.`);
+      return;
+    }
+    if (!ctx.executor || !ctx.proseRunConfig) {
+      addMessage("system", "Executor or prose config not available.");
+      return;
+    }
+    const sidecarPath = join(ctx.proseRunConfig.runsDir, runId, ".helios-run.json");
+    if (!existsSync(sidecarPath)) {
+      addMessage("system", `Run "${runId}" was not started by Helios (no sidecar).`);
+      return;
+    }
+    let sidecar: ProseSidecar;
+    try {
+      sidecar = JSON.parse(readFileSync(sidecarPath, "utf-8"));
+    } catch {
+      addMessage("system", `Failed to read sidecar for "${runId}".`);
+      return;
+    }
+    if (!sidecar.startedByHelios) {
+      addMessage("system", `Run "${runId}" was not started by Helios.`);
+      return;
+    }
+    try {
+      const { runId: newRunId } = await launchProseRun(sidecar.programPath, ctx.executor, ctx.proseRunConfig, {
+        cwd: sidecar.cwd,
+        env: sidecar.env,
+      });
+      addMessage("system", `Resumed as new run: ${newRunId}`);
+      setActiveOverlay?.("prose");
+    } catch (err) {
+      addMessage("system", `Failed to resume: ${formatError(err)}`);
+    }
+    return;
+  }
+
+  if (subCmd === "open") {
+    const runId = args[1];
+    if (!runId) {
+      addMessage("system", "Usage: /prose open <run-id>");
+      return;
+    }
+    ctx.setFocusProseRunId?.(runId);
+    setActiveOverlay?.("prose");
+    return;
+  }
+
+  addMessage("system", "Usage: /prose [runs | tail | run | stop | resume | open]");
 }
 
-function cmdExperiments(args: string[], ctx: CommandContext): void {
+async function cmdExperiments(args: string[], ctx: CommandContext): Promise<void> {
   const { addMessage, experimentAdapter, setActiveOverlay } = ctx;
 
   if (!experimentAdapter) {
@@ -765,7 +880,48 @@ function cmdExperiments(args: string[], ctx: CommandContext): void {
     return;
   }
 
-  addMessage("system", "Usage: /experiments [best]");
+  if (subCmd === "action") {
+    const actionName = args[1];
+    const experimentId = args[2];
+    const confirmFlag = args.includes("--confirm");
+    if (!actionName || !experimentId) {
+      addMessage("system", "Usage: /experiments action <name> <id> [--confirm]");
+      return;
+    }
+    const actions = experimentAdapter.getActions();
+    const action = actions.find((a) => a.name === actionName);
+    if (!action) {
+      addMessage("system", `Unknown action "${actionName}". Available: ${actions.map((a) => a.name).join(", ")}`);
+      return;
+    }
+    const experiments = await experimentAdapter.load();
+    const experiment = experiments.find((e) => e.id === experimentId);
+    if (!experiment) {
+      addMessage("system", `Experiment "${experimentId}" not found.`);
+      return;
+    }
+    if (action.appliesTo && !action.appliesTo(experiment)) {
+      addMessage("system", `Action "${actionName}" does not apply to "${experimentId}".`);
+      return;
+    }
+    if (action.confirmRequired && !confirmFlag) {
+      addMessage("system", `Action "${actionName}" requires confirmation.\nRe-run: /experiments action ${actionName} ${experimentId} --confirm`);
+      return;
+    }
+    if (!ctx.executor) {
+      addMessage("system", "Executor not available.");
+      return;
+    }
+    try {
+      const proc = await executeAction(action, experiment, ctx.executor);
+      addMessage("system", `Executed "${action.label}" on "${experimentId}" (pid ${proc.pid}).`);
+    } catch (err) {
+      addMessage("system", `Action failed: ${formatError(err)}`);
+    }
+    return;
+  }
+
+  addMessage("system", "Usage: /experiments [best | action <name> <id>]");
 }
 
 function cmdSkills(ctx: CommandContext): void {
