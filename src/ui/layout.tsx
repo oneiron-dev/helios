@@ -136,7 +136,7 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
   const [experimentSummary, setExperimentSummary] = useState<ExperimentSummary | null>(null);
 
   // Force re-render on theme change (C is mutated in place)
-  const [, setThemeTick] = useState(0);
+  const [themeTick, setThemeTick] = useState(0);
   useEffect(() => onThemeChange(() => setThemeTick(t => t + 1)), []);
 
   // Refs for skipping unchanged polling state updates
@@ -744,7 +744,7 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           {headless && agentName ? (
             <HeadlessHeader agentName={agentName} width={width} />
           ) : (
-            <HeaderWithPanels width={width} panelGroup={panelGroup} />
+            <HeaderWithPanels width={width} panelGroup={panelGroup} _themeTick={themeTick} />
           )}
         </Box>
 
@@ -853,7 +853,7 @@ function HeadlessHeader({ agentName, width }: { agentName: string; width: number
 }
 
 /** Single header line: logo on the left, panel labels right-aligned in each half. */
-const HeaderWithPanels = memo(function HeaderWithPanels({ width, panelGroup }: { width: number; panelGroup: PanelGroup }) {
+const HeaderWithPanels = memo(function HeaderWithPanels({ width, panelGroup, _themeTick: _ }: { width: number; panelGroup: PanelGroup; _themeTick?: number }) {
   const logo = ` ▓▒░ ${G.brand} HELIOS ░▒▓ `;
   const ver = `${VERSION} `;
 
