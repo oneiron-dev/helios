@@ -5,9 +5,13 @@ import { useScreenSize } from "fullscreen-ink";
 import { MessageLine, PulsingIndicator } from "./panels/conversation.js";
 import { TaskListPanel } from "./panels/task-list.js";
 import { MetricsDashboard } from "./panels/metrics-dashboard.js";
+import { ProseRunPanel } from "./panels/prose-run-panel.js";
+import { ProseStepPanel } from "./panels/prose-step-panel.js";
+import { ExperimentSummaryPanel } from "./panels/experiment-summary-panel.js";
+import { ExperimentLeaderboardPanel } from "./panels/experiment-leaderboard-panel.js";
 import { StatusBar } from "./components/status-bar.js";
 import { InputBar } from "./components/input-bar.js";
-import { C, G, HRule } from "./theme.js";
+import { C, G, HRule, setUnicodeFallback } from "./theme.js";
 import { KeyHintRule } from "./components/key-hint-rule.js";
 import { TaskOverlay } from "./overlays/task-overlay.js";
 import { MetricsOverlay } from "./overlays/metrics-overlay.js";
@@ -24,8 +28,10 @@ import { COMMANDS, handleSlashCommand } from "./commands.js";
 import { pollTaskStatuses, handleFinishedTasks, buildMonitorMessage } from "../core/task-poller.js";
 import { parseToolCalls, parseToolResultMeta } from "../store/session-store.js";
 import { formatDuration, formatError, truncate } from "./format.js";
-import type { Message, ToolData, TaskInfo } from "./types.js";
+import type { Message, ToolData, TaskInfo, PanelGroup } from "./types.js";
 import type { SlashCommand } from "./commands.js";
+import type { ProseRun } from "../prose/types.js";
+import type { Experiment, ExperimentSummary } from "../experiments/types.js";
 
 interface LayoutProps {
   runtime: HeliosRuntime;
@@ -124,6 +130,10 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
   const [focusProseRunId, setFocusProseRunId] = useState<string | undefined>();
   const [resourceData, setResourceData] = useState<Map<string, import("../metrics/resources.js").MachineResources>>(new Map());
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
+  const [panelGroup, setPanelGroup] = useState<PanelGroup>("default");
+  const [proseRuns, setProseRuns] = useState<ProseRun[]>([]);
+  const [experimentList, setExperimentList] = useState<Experiment[]>([]);
+  const [experimentSummary, setExperimentSummary] = useState<ExperimentSummary | null>(null);
 
   // Refs for skipping unchanged polling state updates
   const lastTaskIdsRef = useRef("");
@@ -134,6 +144,41 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
   useEffect(() => {
     checkForUpdate().then((v) => { if (v) setUpdateAvailable(v); }).catch(() => {});
   }, []);
+
+  // Unicode fallback from project config
+  useEffect(() => {
+    if (runtime.projectConfig?.unicodeFallback) setUnicodeFallback(true);
+  }, []);
+
+  // Prose watcher polling
+  useEffect(() => {
+    const pw = runtime.proseWatcher;
+    if (!pw) return;
+    const refresh = () => setProseRuns(pw.getRuns());
+    refresh();
+    pw.on("update", refresh);
+    const timer = setInterval(refresh, 3000);
+    return () => { pw.removeListener("update", refresh); clearInterval(timer); };
+  }, [runtime.proseWatcher]);
+
+  // Experiment adapter polling
+  // Note: ExperimentAdapter.onUpdate has no unsubscribe API; registering once is safe
+  // since runtime.experimentAdapter is stable for the lifetime of the component.
+  const experimentCallbackRegistered = useRef(false);
+  useEffect(() => {
+    const ea = runtime.experimentAdapter;
+    if (!ea) return;
+    const refresh = async () => {
+      const exps = await ea.load();
+      setExperimentList(exps);
+      setExperimentSummary(ea.getSummary());
+    };
+    refresh();
+    if (!experimentCallbackRegistered.current) {
+      experimentCallbackRegistered.current = true;
+      ea.onUpdate(refresh);
+    }
+  }, [runtime.experimentAdapter]);
 
   // Poll tasks and metrics every 5 seconds
   useEffect(() => {
@@ -293,6 +338,15 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
     }
     if (key.ctrl && input === "e") {
       setActiveOverlay((prev) => prev === "experiments" ? "none" : "experiments");
+      return;
+    }
+    if (key.ctrl && input === "p") {
+      if (availableGroups.length > 1) {
+        setPanelGroup(prev => {
+          const idx = availableGroups.indexOf(prev);
+          return availableGroups[(idx + 1) % availableGroups.length];
+        });
+      }
       return;
     }
 
@@ -550,6 +604,35 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
     }
   }, [isStreaming]);
 
+  // ── Panel group logic ──────────────────────────────────────
+  const availableGroups = useMemo<PanelGroup[]>(() => {
+    const groups: PanelGroup[] = ["default"];
+    if (runtime.proseWatcher) groups.push("prose");
+    if (runtime.experimentAdapter) groups.push("experiments");
+    return groups;
+  }, [runtime.proseWatcher, runtime.experimentAdapter]);
+
+  // Clamp if current group becomes unavailable
+  useEffect(() => {
+    if (!availableGroups.includes(panelGroup)) setPanelGroup("default");
+  }, [availableGroups, panelGroup]);
+
+  // Auto-switch to "prose" on first prose update
+  const autoSwitchedRef = useRef(false);
+  useEffect(() => {
+    const pw = runtime.proseWatcher;
+    if (!pw || autoSwitchedRef.current) return undefined;
+    const handler = () => {
+      if (!autoSwitchedRef.current && panelGroup === "default") {
+        autoSwitchedRef.current = true;
+        setPanelGroup("prose");
+      }
+      pw.removeListener("update", handler);
+    };
+    pw.on("update", handler);
+    return () => { pw.removeListener("update", handler); };
+  }, [runtime.proseWatcher, panelGroup]);
+
   const isSleeping = sleepManager.isSleeping;
 
   // Merge static commands with dynamic skill commands for autocomplete
@@ -564,12 +647,28 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
     return [...COMMANDS, ...skillCmds];
   }, [runtime.skillRegistry]);
 
+  // ── Panel height computation ────────────────────────────────
   const metricsRows = metricData.size > 0 ? metricData.size : 1;
   const tasksRows = tasks.length > 0 ? Math.min(tasks.length, 5) : 1;
-  const panelHeight = Math.max(metricsRows, tasksRows);
+  const activeProseRun = proseRuns.find(r => r.status === "running") ?? proseRuns[0] ?? null;
+
+  let panelHeight: number;
+  if (panelGroup === "prose") {
+    const runsRows = Math.min(proseRuns.length, 5) || 1;
+    const stepsRows = activeProseRun ? Math.min(activeProseRun.steps.length, 5) || 1 : 1;
+    panelHeight = Math.max(runsRows, stepsRows);
+  } else if (panelGroup === "experiments") {
+    const summaryRows = experimentSummary ? experimentSummary.stats.length + 2 : 1;
+    const leaderRows = Math.min(experimentList.length, 5) || 1;
+    panelHeight = Math.max(summaryRows, leaderRows);
+  } else {
+    panelHeight = Math.max(metricsRows, tasksRows);
+  }
   const verticalSeparator = useMemo(() => Array.from({ length: panelHeight }, () => "│").join("\n"), [panelHeight]);
 
   const { height, width } = useScreenSize();
+  const halfPanelWidth = Math.floor((width - 1) / 2) - 2;
+  const closeOverlay = useCallback(() => setActiveOverlay("none"), []);
 
   // ── Overlay content (rendered in place of main area) ─────────
   const overlayContent = (() => {
@@ -580,7 +679,7 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           executor={executor}
           width={width}
           height={height - 3}
-          onClose={() => setActiveOverlay("none")}
+          onClose={closeOverlay}
         />
       );
     }
@@ -591,7 +690,7 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           metricStore={metricStore}
           width={width}
           height={height - 3}
-          onClose={() => setActiveOverlay("none")}
+          onClose={closeOverlay}
         />
       );
     }
@@ -609,7 +708,7 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           width={width}
           height={height - 3}
           focusRunId={focusProseRunId}
-          onClose={() => { setActiveOverlay("none"); setFocusProseRunId(undefined); }}
+          onClose={() => { closeOverlay(); setFocusProseRunId(undefined); }}
         />
       );
     }
@@ -627,7 +726,7 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           executor={executor}
           width={width}
           height={height - 3}
-          onClose={() => setActiveOverlay("none")}
+          onClose={closeOverlay}
         />
       );
     }
@@ -641,7 +740,7 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           {headless && agentName ? (
             <HeadlessHeader agentName={agentName} width={width} />
           ) : (
-            <HeaderWithPanels width={width} />
+            <HeaderWithPanels width={width} panelGroup={panelGroup} />
           )}
         </Box>
 
@@ -653,7 +752,9 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           <>
             <Box flexShrink={0} flexDirection="row">
               <Box flexGrow={1} flexBasis={0} flexDirection="column" paddingX={1}>
-                <MetricsDashboard metricData={metricData} width={Math.floor((width - 1) / 2) - 2} />
+                {panelGroup === "default" && <MetricsDashboard metricData={metricData} width={halfPanelWidth} />}
+                {panelGroup === "prose" && <ProseRunPanel runs={proseRuns} width={halfPanelWidth} />}
+                {panelGroup === "experiments" && <ExperimentSummaryPanel summary={experimentSummary} width={halfPanelWidth} />}
               </Box>
               <Box width={1} flexDirection="column" alignItems="center">
                 <Text color={C.primary} wrap="truncate">
@@ -661,7 +762,9 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
                 </Text>
               </Box>
               <Box flexGrow={1} flexBasis={0} flexDirection="column" paddingX={1}>
-                <TaskListPanel tasks={tasks} resources={resourceData} width={Math.floor((width - 1) / 2) - 2} />
+                {panelGroup === "default" && <TaskListPanel tasks={tasks} resources={resourceData} width={halfPanelWidth} />}
+                {panelGroup === "prose" && <ProseStepPanel run={activeProseRun} width={halfPanelWidth} />}
+                {panelGroup === "experiments" && <ExperimentLeaderboardPanel experiments={experimentList} width={halfPanelWidth} />}
               </Box>
             </Box>
 
@@ -713,8 +816,8 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
           </>
         )}
 
-        {!headless && <Box flexShrink={0}><KeyHintRule /></Box>}
-        <Box flexShrink={0}><StatusBar orchestrator={orchestrator} sleepManager={sleepManager} monitorManager={monitorManager} isStreaming={isStreaming} streamingStartedAt={streamingStartedAt} /></Box>
+        {!headless && <Box flexShrink={0}><KeyHintRule hasMultipleGroups={availableGroups.length > 1} /></Box>}
+        <Box flexShrink={0}><StatusBar orchestrator={orchestrator} sleepManager={sleepManager} monitorManager={monitorManager} isStreaming={isStreaming} streamingStartedAt={streamingStartedAt} proseRuns={proseRuns} experimentSummary={experimentSummary} /></Box>
         {!headless && (
           <Box flexShrink={0}>
             <InputBar
@@ -746,25 +849,31 @@ function HeadlessHeader({ agentName, width }: { agentName: string; width: number
 }
 
 /** Single header line: logo on the left, panel labels right-aligned in each half. */
-const HeaderWithPanels = memo(function HeaderWithPanels({ width }: { width: number }) {
+const HeaderWithPanels = memo(function HeaderWithPanels({ width, panelGroup }: { width: number; panelGroup: PanelGroup }) {
   const logo = ` ▓▒░ ${G.brand} HELIOS ░▒▓ `;
   const ver = `${VERSION} `;
-  const metricsLabel = ` ⣤⣸⣿ METRICS `;
-  const tasksLabel = ` ⊳ TASKS `;
+
+  const labels: Record<PanelGroup, { left: string; right: string }> = {
+    default:     { left: " ⣤⣸⣿ METRICS ",     right: " ⊳ TASKS " },
+    prose:       { left: " ◈ PROSE RUNS ",       right: " ⊳ STEPS " },
+    experiments: { left: " ◈ EXPERIMENTS ",      right: " ⊳ LEADERBOARD " },
+  };
+
+  const { left: leftLabel, right: rightLabel } = labels[panelGroup];
 
   const half = Math.floor(width / 2);
-  const leftFill = Math.max(0, half - logo.length - ver.length - metricsLabel.length - 1);
-  const rightFill = Math.max(0, width - half - tasksLabel.length - 1);
+  const leftFill = Math.max(0, half - logo.length - ver.length - leftLabel.length - 1);
+  const rightFill = Math.max(0, width - half - rightLabel.length - 1);
 
   return (
     <Box>
       <ShimmerLogo text={logo} />
       <Text color={C.dim}>{ver}</Text>
       <Text color={C.primary}>{G.rule.repeat(leftFill)}</Text>
-      <Text color={C.primary}>{metricsLabel}</Text>
+      <Text color={C.primary}>{leftLabel}</Text>
       <Text color={C.primary}>{G.rule}</Text>
       <Text color={C.primary}>{G.rule.repeat(rightFill)}</Text>
-      <Text color={C.primary}>{tasksLabel}</Text>
+      <Text color={C.primary}>{rightLabel}</Text>
       <Text color={C.primary}>{G.rule}</Text>
     </Box>
   );

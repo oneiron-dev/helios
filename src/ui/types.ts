@@ -32,3 +32,5 @@ export interface TaskInfo {
   groupId?: string;
   groupLabel?: string;
 }
+
+export type PanelGroup = "default" | "prose" | "experiments";
