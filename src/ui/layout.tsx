@@ -11,7 +11,7 @@ import { ExperimentSummaryPanel } from "./panels/experiment-summary-panel.js";
 import { ExperimentLeaderboardPanel } from "./panels/experiment-leaderboard-panel.js";
 import { StatusBar } from "./components/status-bar.js";
 import { InputBar } from "./components/input-bar.js";
-import { C, G, HRule, setUnicodeFallback } from "./theme.js";
+import { C, G, HRule, setUnicodeFallback, onThemeChange } from "./theme.js";
 import { KeyHintRule } from "./components/key-hint-rule.js";
 import { TaskOverlay } from "./overlays/task-overlay.js";
 import { MetricsOverlay } from "./overlays/metrics-overlay.js";
@@ -134,6 +134,10 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
   const [proseRuns, setProseRuns] = useState<ProseRun[]>([]);
   const [experimentList, setExperimentList] = useState<Experiment[]>([]);
   const [experimentSummary, setExperimentSummary] = useState<ExperimentSummary | null>(null);
+
+  // Force re-render on theme change (C is mutated in place)
+  const [, setThemeTick] = useState(0);
+  useEffect(() => onThemeChange(() => setThemeTick(t => t + 1)), []);
 
   // Refs for skipping unchanged polling state updates
   const lastTaskIdsRef = useRef("");

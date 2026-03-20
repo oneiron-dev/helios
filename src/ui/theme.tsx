@@ -1,12 +1,24 @@
 import { Box, Text } from "ink";
 
+import { execSync } from "node:child_process";
+
 // ─── Light-theme detection ──────────────────────────
 function detectLightTerminal(): boolean {
-  // COLORFGBG is "fg;bg" — bg > 8 means light background
+  // 1. COLORFGBG is "fg;bg" — bg > 8 means light background
   const cfg = process.env.COLORFGBG;
   if (cfg) {
     const bg = Number(cfg.split(";").pop());
     if (!Number.isNaN(bg) && bg > 8) return true;
+  }
+  // 2. macOS system appearance — "Dark" means dark mode, error/empty means light
+  if (process.platform === "darwin") {
+    try {
+      const result = execSync("defaults read -g AppleInterfaceStyle", { encoding: "utf8", timeout: 500 }).trim();
+      return result !== "Dark";
+    } catch {
+      // Command fails when system is in light mode (key doesn't exist)
+      return true;
+    }
   }
   return false;
 }
@@ -59,6 +71,18 @@ export const METRIC_COLORS: string[] = IS_LIGHT
 // ─── Colors (mutable for runtime theme switching) ────
 export let C = IS_LIGHT ? { ...LIGHT_COLORS } : { ...DARK_COLORS };
 
+// ─── Theme change listeners (for React re-render) ───
+type ThemeListener = () => void;
+const _listeners: ThemeListener[] = [];
+
+export function onThemeChange(fn: ThemeListener): () => void {
+  _listeners.push(fn);
+  return () => {
+    const idx = _listeners.indexOf(fn);
+    if (idx >= 0) _listeners.splice(idx, 1);
+  };
+}
+
 /** Switch theme at runtime. */
 export function setTheme(mode: ThemeMode): void {
   _themeMode = mode;
@@ -77,6 +101,8 @@ export function setTheme(mode: ThemeMode): void {
   STATUS_STYLE.rejected.color = C.error;
   STATUS_STYLE.keep.color = C.success;
   STATUS_STYLE.revert.color = C.error;
+  // Notify listeners to trigger re-render
+  for (const fn of _listeners) fn();
 }
 
 export function currentThemeMode(): ThemeMode {
