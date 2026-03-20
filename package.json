@@ -1,7 +1,7 @@
 {
-  "name": "@snoglobe/helios",
-  "version": "0.4.7",
-  "description": "Autonomous ML research agent TUI",
+  "name": "helios-ai",
+  "version": "0.5.0",
+  "description": "Autonomous ML research agent TUI (fork of @snoglobe/helios)",
   "type": "module",
   "main": "dist/cli/index.js",
   "bin": {
@@ -22,7 +22,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/snoglobe/helios.git"
+    "url": "git+https://github.com/oneiron-dev/helios.git"
   },
   "keywords": [
     "ml",
@@ -31,9 +31,10 @@
     "tui",
     "autonomous",
     "claude",
-    "openai"
+    "openai",
+    "oneiron"
   ],
-  "author": "snoglobe",
+  "author": "olety",
   "license": "Apache-2.0",
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.0",

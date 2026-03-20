@@ -15,7 +15,7 @@ function loadVersion(): string {
 
 export const VERSION = loadVersion();
 
-const NPM_PACKAGE = "helios";
+const NPM_PACKAGE = "helios-ai";
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 let cachedLatest: string | null = null;

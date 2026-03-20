@@ -787,7 +787,7 @@ export function Layout({ runtime, mouseEmitter, headless, initialPrompt, initial
                     <Text color={C.dim} dimColor>/help for commands</Text>
                     {updateAvailable && (
                       <Box marginTop={1}>
-                        <Text color={C.bright}>update available: v{updateAvailable} — npm i -g helios</Text>
+                        <Text color={C.bright}>update available: v{updateAvailable} — npm i -g helios-ai</Text>
                       </Box>
                     )}
                   </Box>
